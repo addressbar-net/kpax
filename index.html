@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta name="viewport" content="width=device-width, height=device-height, initial-scale=1">
+	<meta charset="UTF-8">
+	<title>K-PAX // 3D Block Realm & Engine</title>
+	<style>
+		* { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif; }
+		body { background-color: #08090b; color: #e2e8f0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+		.loader-card { background: #0f131a; border: 1px solid #1e293b; border-radius: 16px; max-width: 540px; width: 92%; padding: 36px 32px; box-shadow: 0 16px 40px rgba(0,0,0,0.85); text-align: center; }
+		.badge { display: inline-block; padding: 4px 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; border-radius: 20px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); margin-bottom: 14px; }
+		.loader-title { font-size: 26px; font-weight: 800; color: #f8fafc; margin-bottom: 6px; letter-spacing: -0.5px; }
+		.loader-title span { color: #f59e0b; }
+		.loader-sub { font-size: 13.5px; color: #94a3b8; margin-bottom: 24px; line-height: 1.5; }
+		.progress-bar-wrap { background: #1e293b; border-radius: 8px; height: 14px; overflow: hidden; margin-bottom: 12px; border: 1px solid #334155; }
+		.progress-bar-fill { background: linear-gradient(90deg, #38bdf8, #f59e0b); height: 100%; width: 0%; transition: width 0.2s ease; }
+		.progress-text { font-size: 12.5px; color: #cbd5e1; font-family: monospace; margin-bottom: 22px; }
+		.controls-box { background: rgba(0,0,0,0.45); border: 1px solid #1e293b; border-radius: 10px; padding: 14px 18px; text-align: left; font-size: 12px; color: #94a3b8; margin-bottom: 20px; }
+		.controls-box table { width: 100%; border-collapse: collapse; }
+		.controls-box td { padding: 4px 6px; }
+		.controls-box td:first-child { font-weight: bold; color: #f59e0b; width: 40%; }
+		.features-list { display: flex; justify-content: space-between; font-size: 11.5px; color: #64748b; margin-top: 18px; border-top: 1px solid #1e293b; padding-top: 14px; }
+	</style>
+	<script>
+		window.currentUser = { authenticated: true, username: 'Traveler' };
+		const TarAppLoader = {
+			fileSystem: {},
+			createdUrls: [],
+			MIME_MAP: { 
+				'txt': 'text/plain', 'html': 'text/html', 'css': 'text/css',
+				'js': 'application/javascript', 'json': 'application/json',
+				'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+				'gif': 'image/gif', 'pdf': 'application/pdf', 'zip': 'application/zip',
+				'csv': 'text/csv', 'ttf': 'font/ttf', 'woff': 'font/woff', 'woff2': 'font/woff2',
+				'gltf': 'model/gltf+json', 'bin': 'application/octet-stream'
+			},
+
+			getMimeType(fileName) {
+				const ext = (fileName.split('.').pop() || '').toLowerCase();
+				return TarAppLoader.MIME_MAP[ext] || 'application/octet-stream';
+			},
+
+			parseTarBuffer(arrayBuffer) {
+				const files = [];
+				let offset = 0;
+				let pendingLongName = null;
+
+				while (offset < arrayBuffer.byteLength - 512) {
+					const headerBytes = new Uint8Array(arrayBuffer, offset, 512);
+					let isZero = true;
+					for (let i = 0; i < 512; i++) {
+						if (headerBytes[i] !== 0) { isZero = false; break; }
+					}
+					if (isZero) break;
+
+					function readString(start, length) {
+						let str = '';
+						for (let i = start; i < start + length; i++) {
+							if (headerBytes[i] === 0) break;
+							str += String.fromCharCode(headerBytes[i]);
+						}
+						return str.trim();
+					}
+
+					const rawName = readString(0, 100);
+					const sizeStr = readString(124, 12);
+					const fileSize = parseInt(sizeStr, 8) || 0;
+					const typeFlagStr = readString(156, 1);
+					const fileType = typeFlagStr.charCodeAt(0) || 0;
+					const ustarPrefix = readString(345, 155);
+
+					offset += 512;
+
+					if (typeFlagStr === 'L') {
+						const nameBytes = new Uint8Array(arrayBuffer, offset, fileSize);
+						let longName = '';
+						for (let i = 0; i < nameBytes.length; i++) {
+							if (nameBytes[i] === 0) break;
+							longName += String.fromCharCode(nameBytes[i]);
+						}
+						pendingLongName = longName.trim();
+						offset += Math.ceil(fileSize / 512) * 512;
+						continue;
+					}
+
+					let fileName = pendingLongName || (ustarPrefix ? `${ustarPrefix}/${rawName}` : rawName);
+					pendingLongName = null;
+					if (!fileName) break;
+					fileName = fileName.replace(/^\.\//, '');
+
+					if (fileType === 0 || fileType === 48) {
+						const fileData = new Uint8Array(arrayBuffer, offset, fileSize);
+						const mimeType = TarAppLoader.getMimeType(fileName);
+						const blob = new Blob([fileData], { type: mimeType });
+						const blobUrl = URL.createObjectURL(blob);
+						TarAppLoader.createdUrls.push(blobUrl);
+
+						files.push({
+							name: fileName,
+							data: fileData,
+							blob: blob,
+							url: blobUrl,
+							file: new File([blob], fileName, { type: mimeType, lastModified: Date.now() })
+						});
+					}
+					offset += Math.ceil(fileSize / 512) * 512;
+				}
+				return files;
+			},
+
+			async buildFileSystemFromTar(tarBlob) {
+				const arrayBuffer = await tarBlob.arrayBuffer();
+				const entries = TarAppLoader.parseTarBuffer(arrayBuffer);
+				const fs = {};
+				for (const entry of entries) fs[entry.name] = entry;
+				TarAppLoader.fileSystem = fs;
+				TarAppLoader.loadInnerIndex();
+			},
+
+			async fetchArchive(filePath, onProgress) {
+				const response = await fetch(filePath);
+				if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+				const contentLength = response.headers.get('content-length');
+				if (!contentLength || !onProgress) return await response.blob();
+
+				const total = parseInt(contentLength, 10);
+				let loaded = 0;
+				const reader = response.body.getReader();
+				const chunks = [];
+				while (true) {
+					const { done, value } = await reader.read();
+					if (done) break;
+					chunks.push(value);
+					loaded += value.length;
+					onProgress(Math.round((loaded / total) * 100));
+				}
+				return new Blob(chunks, { type: 'application/x-tar' });
+			},
+
+			async loadInnerIndex() {
+				const indexEntry = TarAppLoader.fileSystem['index_3.html'] || TarAppLoader.fileSystem['index.html'];
+				if (!indexEntry) {
+					console.error("Index not found in K-PAX TAR.");
+					return;
+				}
+				const response = await fetch(indexEntry.url);
+				const htmlText = await response.text();
+				TarAppLoader.renderDocument(htmlText);
+			},
+
+			renderDocument(source) {
+				let iframe = document.getElementById('game-frame');
+				if (!iframe) {
+					iframe = document.createElement('iframe');
+					iframe.id = 'game-frame';
+					iframe.style.cssText = 'width:100vw; height:100vh; border:none; position:fixed; top:0; left:0; z-index:99999; background:#000;';
+					document.body.appendChild(iframe);
+				}
+
+				iframe.contentWindow.TarAppLoader = TarAppLoader;
+				iframe.contentWindow.currentUser = window.currentUser;
+				iframe.contentWindow.targetServerHost = window.location.hostname;
+				iframe.contentWindow.DARK_WORLD_WS_HOST = window.location.hostname;
+
+				const doc = iframe.contentWindow.document;
+				doc.open();
+				doc.write(source);
+				doc.close();
+
+				iframe.contentWindow.TarAppLoader = TarAppLoader;
+				iframe.contentWindow.currentUser = window.currentUser;
+				iframe.contentWindow.targetServerHost = window.location.hostname;
+				iframe.contentWindow.DARK_WORLD_WS_HOST = window.location.hostname;
+			}
+		};
+
+		async function launchKpax() {
+			try {
+				const progressEl = document.getElementById('progress');
+				const barEl = document.getElementById('progress-bar');
+				const blob = await TarAppLoader.fetchArchive('cannon/bar.tar', (percent) => {
+					if (progressEl) progressEl.textContent = `Streaming K-PAX parcel: ${percent}%`;
+					if (barEl) barEl.style.width = `${percent}%`;
+				});
+				if (progressEl) progressEl.textContent = "Unpacking stackable block realm & Link entity...";
+				await TarAppLoader.buildFileSystemFromTar(blob);
+			} catch (err) {
+				console.error("Failed to mount K-PAX archive:", err);
+				const progressEl = document.getElementById('progress');
+				if (progressEl) progressEl.textContent = "Error mounting realm archive. Please refresh.";
+			}
+		}
+
+		window.addEventListener('DOMContentLoaded', launchKpax);
+	</script>
+</head>
+<body>
+	<div class="loader-card">
+		<div class="badge">k-pax.click // Engine v2.0</div>
+		<h1 class="loader-title">K-PAX <span>Realm</span></h1>
+		<p class="loader-sub">Modular Stackable Block Engine, Pix Frame Aperture &amp; Link Entity</p>
+
+		<div class="progress-bar-wrap">
+			<div class="progress-bar-fill" id="progress-bar"></div>
+		</div>
+		<div class="progress-text" id="progress">Initializing in-memory virtual filesystem...</div>
+
+		<div class="controls-box">
+			<table>
+				<tr><td>W / A / S / D</td><td>Walk / Run across block terrain</td></tr>
+				<tr><td>Space / Shift</td><td>Somersault Roll / Sprint</td></tr>
+				<tr><td>Key [K]</td><td><strong>Click Under Cursor / Pix Frame Expansion</strong></td></tr>
+				<tr><td>Tab</td><td>Main Inventory &amp; Debug Menu</td></tr>
+			</table>
+		</div>
+
+		<div class="features-list">
+			<span>Block Occlusion Culling</span>
+			<span>Pix Frame Expansion</span>
+			<span>POSIX PAX TAR Mount</span>
+		</div>
+	</div>
+</body>
+</html>

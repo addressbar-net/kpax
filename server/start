@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# farmeraga.com // Farm Server Startup & Auto-Recovery Script
+# Loads /addr.bar/farm_server into /tmp/html/farm_server and launches Node.js
+# ==============================================================================
+set -e
+
+PERSISTENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TARGET_DIR="/tmp/html/farm_server"
+
+echo "=================================================================="
+echo "  Starting farmeraga.com Farm Server (Node.js + SQLite)"
+echo "=================================================================="
+
+# 1. Ensure persistent directory and permissions are open (0777 / 0666)
+mkdir -p "${PERSISTENT_DIR}/logs/chat"
+chmod 777 "${PERSISTENT_DIR}" "${PERSISTENT_DIR}/logs" "${PERSISTENT_DIR}/logs/chat" 2>/dev/null || true
+if [ -f "${PERSISTENT_DIR}/farm_game.sqlite" ]; then
+    chmod 666 "${PERSISTENT_DIR}"/farm_game.sqlite* 2>/dev/null || true
+fi
+
+# 2. Load /addr.bar/farm_server backup into /tmp/html/farm_server
+ACTIVE_RUN_DIR="${PERSISTENT_DIR}"
+if mkdir -p "${TARGET_DIR}" 2>/dev/null; then
+    echo "✓ Loading /addr.bar/farm_server into ${TARGET_DIR}..."
+
+    # Link or copy node_modules to save time
+    if [ -d "${PERSISTENT_DIR}/node_modules" ] && [ ! -d "${TARGET_DIR}/node_modules" ]; then
+        ln -sf "${PERSISTENT_DIR}/node_modules" "${TARGET_DIR}/node_modules" 2>/dev/null || cp -r "${PERSISTENT_DIR}/node_modules" "${TARGET_DIR}/" 2>/dev/null || true
+    fi
+
+    # Copy server files
+    for item in server.js package.json backup.sh start open cert.pem key.pem .env.example; do
+        if [ -f "${PERSISTENT_DIR}/${item}" ]; then
+            cp -f "${PERSISTENT_DIR}/${item}" "${TARGET_DIR}/${item}" 2>/dev/null || true
+        fi
+    done
+    chmod +x "${TARGET_DIR}/start" "${TARGET_DIR}/open" "${TARGET_DIR}/backup.sh" 2>/dev/null || true
+
+    mkdir -p "${TARGET_DIR}/logs/chat"
+    if [ -d "${PERSISTENT_DIR}/logs/chat" ]; then
+        cp -rf "${PERSISTENT_DIR}/logs/chat/"* "${TARGET_DIR}/logs/chat/" 2>/dev/null || true
+    fi
+
+    # Load database: copy backup from /addr.bar/farm_server into /tmp/html/farm_server
+    if [ -f "${PERSISTENT_DIR}/farm_game.sqlite" ]; then
+        cp -f "${PERSISTENT_DIR}/farm_game.sqlite" "${TARGET_DIR}/farm_game.sqlite" 2>/dev/null || true
+        if [ -f "${PERSISTENT_DIR}/farm_game.sqlite-wal" ]; then
+            cp -f "${PERSISTENT_DIR}/farm_game.sqlite-wal" "${TARGET_DIR}/farm_game.sqlite-wal" 2>/dev/null || true
+        fi
+        if [ -f "${PERSISTENT_DIR}/farm_game.sqlite-shm" ]; then
+            cp -f "${PERSISTENT_DIR}/farm_game.sqlite-shm" "${TARGET_DIR}/farm_game.sqlite-shm" 2>/dev/null || true
+        fi
+    fi
+
+    # Set wide-open permissions so PHP/www-data has full write access without readonly errors
+    chmod -R 777 "${TARGET_DIR}" 2>/dev/null || true
+    if [ -f "${TARGET_DIR}/farm_game.sqlite" ]; then
+        chmod 666 "${TARGET_DIR}"/farm_game.sqlite* 2>/dev/null || true
+    fi
+
+    ACTIVE_RUN_DIR="${TARGET_DIR}"
+    echo "✓ Successfully loaded server and database into ${TARGET_DIR}"
+else
+    echo "Notice: /tmp/html not writable by current user; running directly from ${PERSISTENT_DIR}."
+fi
+
+# 3. Stop any previously running instance
+if command -v screen >/dev/null 2>&1; then
+    screen -S node_farm_server -X quit 2>/dev/null || true
+fi
+pkill -f "node.*farm_server.*server.js" 2>/dev/null || true
+sleep 1
+
+# 4. Launch Node.js server inside screen session
+cd "${ACTIVE_RUN_DIR}"
+echo "✓ Launching Node.js WebSocket server in ${ACTIVE_RUN_DIR}..."
+
+if command -v screen >/dev/null 2>&1; then
+    screen -dmS node_farm_server node server.js
+    echo "✓ Server process started in screen session 'node_farm_server'."
+else
+    nohup node server.js >> server.log 2>&1 &
+    echo "✓ Server process started in background with PID $!."
+fi
+
+# 5. Ensure cron jobs for 1-hour interval backup and @reboot recovery
+if command -v crontab >/dev/null 2>&1; then
+    CRON_TEMP="$(mktemp)"
+    crontab -l 2>/dev/null | grep -v "farm_server" > "${CRON_TEMP}" || true
+    echo "0 * * * * ${PERSISTENT_DIR}/backup.sh >> ${PERSISTENT_DIR}/logs/backup.log 2>&1" >> "${CRON_TEMP}"
+    echo "@reboot ${PERSISTENT_DIR}/start >> ${PERSISTENT_DIR}/logs/boot.log 2>&1" >> "${CRON_TEMP}"
+    crontab "${CRON_TEMP}" 2>/dev/null && echo "✓ Scheduled 1-hour interval backup and @reboot recovery in crontab." || true
+    rm -f "${CRON_TEMP}"
+fi
+
+# 6. Verify health
+sleep 1
+if curl -s http://localhost:8080/health >/dev/null 2>&1; then
+    echo "✓ Health Check: ONLINE on http://localhost:8080"
+else
+    echo "Notice: Check status on http://localhost:8080/status"
+fi
+
+echo "=================================================================="
+echo "  Farm Server is running."
+echo "  To view live console: screen -r node_farm_server"
+echo "  To detach console:    Press Ctrl+A then D"
+echo "  To save manual backup before reboot: ./backup"
+echo "=================================================================="

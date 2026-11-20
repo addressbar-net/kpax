@@ -1,0 +1,24 @@
+{
+  "name": "farmeraga-farm-server",
+  "version": "1.0.0",
+  "description": "Real-Time 3D Multiplayer & Chat WebSocket Server for farmeraga.com backed by SQLite",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.2.0",
+    "ws": "^8.18.0"
+  },
+  "keywords": [
+    "farmeraga",
+    "farmeraga.com",
+    "sqlite",
+    "websocket",
+    "multiplayer",
+    "realtime"
+  ],
+  "author": "Farmeraga Realm Team",
+  "license": "ISC"
+}

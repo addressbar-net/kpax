@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Farmeraga // 3D Realm Engine</title>
+
+    <script>
+        const stylesToLoad = [
+            'style.css'
+        ];
+
+        // Grouped by Category Subfolders (Max 10 files per directory)
+        const scriptsToLoad = [ 
+            // System & Decoupling Architecture
+            'system/eventBus.js',
+            'system/gameState.js',
+            'system/multiplayerClient.js',
+
+            // Core WebGL & Engine Foundation
+            'core/math.js',
+            'core/shaders.js',
+            'core/renderer.js',
+
+            // Audio Subsystem & Song Manifest Loader
+            'audio/audioCore.js',          
+            'audio/audioRegistry.js',      
+            'audio/songManifest.js',
+
+            // User Interface & Registry Systems
+            'ui/pixelFont.js',
+            'ui/itemRegistry.js',
+            'ui/debugMenu.js',
+            'ui/audioMenu.js',
+            'ui/chatUI.js',
+
+            // Physics, Spatial Math & Camera Subsystems
+            'physics/collisionWorld.js',
+            'physics/camera.js',            
+            'controls/inputManager.js',             
+            'physics/playerPhysics.js',     
+            'physics/interaction.js',
+            'physics/characterAnimator.js',
+
+            // Main Game Engine Loop
+            'core/gameLoop.js'
+        ];
+
+        window.resolveUrl = function(path, parentPath = '') {
+            const loader = window.TarAppLoader || (window.parent && window.parent.TarAppLoader);
+            
+            if (!loader || !loader.fileSystem) {
+                if (parentPath && !parentPath.startsWith('blob:') && !path.startsWith('/') && !path.startsWith('http')) {
+                    const folder = parentPath.substring(0, parentPath.lastIndexOf('/') + 1);
+                    return folder + path;
+                }
+                return path;
+            }
+
+            let cleanPath = path.replace(/^\.\//, '').replace(/^\//, '');
+
+            if (loader.fileSystem[cleanPath]) {
+                return loader.fileSystem[cleanPath].url;
+            }
+
+            if (parentPath) {
+                let folder = '';
+                if (!parentPath.startsWith('blob:')) {
+                    folder = parentPath.substring(0, parentPath.lastIndexOf('/') + 1);
+                } else {
+                    // Reverse lookup blob URL to find original TarFS entry
+                    const tarKey = Object.keys(loader.fileSystem).find(k => loader.fileSystem[k] && loader.fileSystem[k].url === parentPath);
+                    if (tarKey) {
+                        folder = tarKey.substring(0, tarKey.lastIndexOf('/') + 1);
+                    }
+                }
+                if (folder) {
+                    const relativePath = (folder + cleanPath).replace(/^\.\//, '');
+                    if (loader.fileSystem[relativePath]) {
+                        return loader.fileSystem[relativePath].url;
+                    }
+                }
+            }
+
+            const fileNameOnly = cleanPath.split('/').pop();
+            const matchedKey = Object.keys(loader.fileSystem).find(key => key.endsWith(fileNameOnly));
+            if (matchedKey) {
+                return loader.fileSystem[matchedKey].url;
+            }
+
+            console.error(`[TarFS] FAILED to resolve file in TAR filesystem: Requested='${path}', Parent='${parentPath}'`);
+            return path;
+        };
+
+        function loadResource(url, type) {
+            return new Promise((resolve, reject) => {
+                let element;
+                if (type === 'script') {
+                    element = document.createElement('script');
+                    element.src = url;
+                } else if (type === 'link') {
+                    element = document.createElement('link');
+                    element.href = url;
+                    element.rel = "stylesheet";
+                }
+                element.onload = () => {
+                    console.log(`[Loader] Loaded (${type}): ${url}`);
+                    resolve(url);
+                };
+                element.onerror = (err) => {
+                    console.error(`[Loader Error] Failed to load (${type}): ${url}`, err);
+                    reject(new Error(`Failed to load ${type}: ${url}`));
+                };
+                document.head.appendChild(element);
+            });
+        }
+
+        async function loadAllScriptsSequentially() {
+            console.log("[Bootstrap] Starting sequential resource loading...");
+            try {
+                for (const stylePath of stylesToLoad) {
+                    await loadResource(resolveUrl(stylePath), 'link');
+                }
+
+                for (const scriptPath of scriptsToLoad) {
+                    await loadResource(resolveUrl(scriptPath), 'script');
+                }
+
+                // Await dynamic loading of all songs in songManifest.js before starting engine
+                if (typeof window.loadAllSongsDynamically === 'function') {
+                    await window.loadAllSongsDynamically();
+                }
+
+                console.log("[Bootstrap] All core scripts and song manifests loaded successfully. Checking initEngine()...");
+
+                if (typeof initEngine === 'function') {
+                    console.log("[Bootstrap] Invoking initEngine()...");
+                    try {
+                        initEngine();
+                        console.log("[Bootstrap] initEngine() completed without errors.");
+                    } catch (err) {
+                        console.error("[Bootstrap Error] Engine initialization failed inside initEngine():", err);
+                    }
+
+                    window.focus();
+                    const canvas = document.getElementById('glCanvas');
+                    if (canvas) canvas.focus();
+
+                    if (typeof window.updateGBAScaling === 'function') {
+                        window.updateGBAScaling();
+                    }
+                } else {
+                    console.error("[Engine Error] initEngine() function is missing from core/gameLoop.js");
+                }
+            } catch (error) {
+                console.error("[Bootstrap Error] Resource loading halted due to an error:", error);
+            }
+        }
+
+        window.updateGBAScaling = function() {
+            const container = document.getElementById('game-screen-container');
+            if (!container) return;
+            const w = container.clientWidth || 480;
+            // Base resolution is 480 x 320 (3:2)
+            const scale = w / 480;
+            document.documentElement.style.setProperty('--gba-scale', scale);
+        };
+        window.addEventListener('resize', window.updateGBAScaling);
+        window.addEventListener('DOMContentLoaded', window.updateGBAScaling);
+    </script>
+</head>
+<body>
+    <!-- Game Boy Advance 3:2 Auto-Resizing Screen Container -->
+    <div id="game-screen-container">
+
+    <!-- In-game player nametags overlay inside 3:2 screen container -->
+    <div id="darkworld-nametags-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 600; overflow: hidden;">
+        <div id="character-display-name" class="character-display-name darkworld-nametag" style="display: none;"></div>
+    </div>
+
+    <!-- Open Sea Nautical Navigation & Coordinates Telemetry HUD -->
+    <div id="sea-coordinates-hud" class="sea-coordinates-hud hidden">
+        <div class="sea-coords-card">
+            <div class="sea-coords-header">
+                <span class="sea-coords-icon">🧭</span>
+                <span id="sea-coords-location" class="sea-coords-title">COASTAL WATERS</span>
+            </div>
+            <div class="sea-coords-grid">
+                <div class="sea-coords-item">
+                    <span class="sea-coords-label">LAT</span>
+                    <span id="sea-coords-lat" class="sea-coords-val">00° 00.0' N</span>
+                </div>
+                <div class="sea-coords-item">
+                    <span class="sea-coords-label">LON</span>
+                    <span id="sea-coords-val-lon" class="sea-coords-val"><span id="sea-coords-lon">00° 00.0' E</span></span>
+                </div>
+                <div class="sea-coords-item">
+                    <span class="sea-coords-label">HDG</span>
+                    <span id="sea-coords-hdg" class="sea-coords-val">000° N</span>
+                </div>
+                <div class="sea-coords-item">
+                    <span class="sea-coords-label">SPD</span>
+                    <span id="sea-coords-spd" class="sea-coords-val">0.0 KTS</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="hud-overlay" style="display: none !important;">
+        <!-- All HUD elements removed from screen per user request -->
+    </div>
+
+    <!-- Main Menu Overlay (Pokemon Ruby GBA 3:2 Design) -->
+    <div id="item-menu-overlay" class="hidden">
+        <!-- Pokemon Ruby Right-Side Start Menu Window -->
+        <div class="gba-start-menu-window">
+            <div id="item-grid-container" class="gba-menu-list"></div>
+        </div>
+
+        <!-- Pokemon Ruby Bottom Description Guide Box (replaced by persistent bottom chat notification) -->
+        <div id="main-menu-gba-desc" class="gba-description-box" style="display: none !important;">
+            <span class="gba-desc-name">SETTINGS:</span> Press Tab to close the Main Menu.
+        </div>
+    </div>
+
+    <!-- Text Message Tool Box (Right above the Room Chat Notification Box) -->
+    <div id="text-message-tool-box" class="room-chat-notification text-message-tool-box gba-description-box hidden">
+        <div class="notif-toast-content" onclick="window.ChatUI && window.ChatUI.focusTextMessageTool()">
+            <span class="notif-toast-icon">💬</span>
+            <div class="notif-toast-body">
+                <div class="notif-toast-header">
+                    <span id="text-msg-tool-author" class="notif-toast-author">?</span>
+                    <span id="text-msg-tool-room" class="notif-toast-room">[world]</span>
+                </div>
+                <div id="text-msg-tool-msg" class="notif-toast-msg"><div id="text-msg-tool-line-1" class="notif-toast-line"></div><div id="text-msg-tool-line-2" class="notif-toast-line"></div></div>
+            </div>
+        </div>
+        <input id="text-msg-tool-input" class="text-msg-tool-input" type="text" maxlength="70" autocomplete="off" spellcheck="false" />
+        <button class="notif-toast-close" type="button" onclick="event.stopPropagation(); window.ChatUI && window.ChatUI.closeTextMessageTool()" title="Close Text Message (Tab)">×</button>
+    </div>
+
+    <!-- Persistent Bottom Room Chat Notification Box (Where menu info was displayed) -->
+    <div id="room-chat-notification" class="room-chat-notification gba-description-box">
+        <div class="notif-toast-content" onclick="window.toggleCellPhone(true)">
+            <span class="notif-toast-icon">💬</span>
+            <div class="notif-toast-body">
+                <div class="notif-toast-header">
+                    <span id="notif-toast-author" class="notif-toast-author">CHAT</span>
+                    <span id="notif-toast-room" class="notif-toast-room">[world]</span>
+                </div>
+                <div id="notif-toast-msg" class="notif-toast-msg"><div id="notif-toast-line-1" class="notif-toast-line">No messages yet.</div><div id="notif-toast-line-2" class="notif-toast-line"></div></div>
+            </div>
+        </div>
+        <button class="notif-toast-close" type="button" onclick="event.stopPropagation(); window.ChatUI && window.ChatUI.toggleNotifications(false)" title="Turn Off Notifications">×</button>
+    </div>
+
+    <!-- Clothes Menu Overlay (Cosmetic Attire - Cap, Shirt, Pants) -->
+    <div id="equipment-menu-overlay" class="hidden gba-submenu-window">
+        <div class="gba-menu-header">
+            <h2 class="gba-title">CLOTHES</h2>
+        </div>
+
+        <div class="equipment-layout-container" style="grid-template-columns: repeat(3, 1fr);">
+            <!-- Cap Slot -->
+            <div class="equipment-category-column" id="category-col-cap" data-cat="cap">
+                <div class="category-header">
+                    <span class="category-icon">🧢</span>
+                    <span class="category-title">CAP</span>
+                </div>
+                <div class="worn-active-box" id="worn-active-cap">
+                    <div class="worn-box-badge">EQUIPPED</div>
+                    <div class="worn-box-icon" id="worn-cap-icon">🧢</div>
+                    <div class="worn-box-name" id="worn-cap-name">Normal Cap</div>
+                </div>
+            </div>
+
+            <!-- Shirt Slot -->
+            <div class="equipment-category-column" id="category-col-shirt" data-cat="shirt">
+                <div class="category-header">
+                    <span class="category-icon">👕</span>
+                    <span class="category-title">SHIRT</span>
+                </div>
+                <div class="worn-active-box" id="worn-active-shirt">
+                    <div class="worn-box-badge">EQUIPPED</div>
+                    <div class="worn-box-icon" id="worn-shirt-icon">👕</div>
+                    <div class="worn-box-name" id="worn-shirt-name">Normal Shirt</div>
+                </div>
+            </div>
+
+            <!-- Pants Slot -->
+            <div class="equipment-category-column" id="category-col-pants" data-cat="pants">
+                <div class="category-header">
+                    <span class="category-icon">👖</span>
+                    <span class="category-title">PANTS</span>
+                </div>
+                <div class="worn-active-box" id="worn-active-pants">
+                    <div class="worn-box-badge">EQUIPPED</div>
+                    <div class="worn-box-icon" id="worn-pants-icon">👖</div>
+                    <div class="worn-box-name" id="worn-pants-name">Normal Pants</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-hint" style="margin-top: auto;">
+            <b>Tab / Esc:</b> Return to Menu
+        </div>
+    </div>
+
+    <!-- Medallions Menu Overlay (6 Medallions, Clockwise starting from Bottom) -->
+    <div id="medallions-menu-overlay" class="hidden gba-submenu-window">
+        <div class="gba-menu-header">
+            <h2 class="gba-title">MEDALLIONS</h2>
+        </div>
+
+        <div class="medallions-layout-container">
+            <!-- Circular Medallion Wheel (6 Nodes: Bottom -> Bottom-Left -> Top-Left -> Top -> Top-Right -> Bottom-Right) -->
+            <div class="medallions-wheel-wrapper">
+                <div class="medallions-wheel-ring">
+                    <!-- Center Crest -->
+                    <div class="medallions-center-crest">
+                        <div class="center-crest-symbol">⚜️</div>
+                        <div class="center-crest-count"><span id="medallions-earned-count">1</span> / 6</div>
+                        <div class="center-crest-label">MEDALLIONS</div>
+                    </div>
+
+                    <!-- 6 Medallion Nodes -->
+                    <!-- Pos 1: Bottom (6 o'clock) - Sprint Speed Medallion (EARNED & ACTIVE) -->
+                    <div id="medallion-slot-1" class="medallion-node earned active-hover" data-slot="1" title="Sprint Speed Medallion (Earned)">
+                        <div class="node-tag">1</div>
+                        <div class="node-icon">⚡</div>
+                        <div class="node-pulse"></div>
+                    </div>
+
+                    <!-- Pos 2: Bottom-Left (8 o'clock) - Locked -->
+                    <div id="medallion-slot-2" class="medallion-node locked" data-slot="2" title="Locked Medallion 2">
+                        <div class="node-tag">2</div>
+                        <div class="node-icon">🔒</div>
+                    </div>
+
+                    <!-- Pos 3: Top-Left (10 o'clock) - Locked -->
+                    <div id="medallion-slot-3" class="medallion-node locked" data-slot="3" title="Locked Medallion 3">
+                        <div class="node-tag">3</div>
+                        <div class="node-icon">🔒</div>
+                    </div>
+
+                    <!-- Pos 4: Top (12 o'clock) - Locked -->
+                    <div id="medallion-slot-4" class="medallion-node locked" data-slot="4" title="Locked Medallion 4">
+                        <div class="node-tag">4</div>
+                        <div class="node-icon">🔒</div>
+                    </div>
+
+                    <!-- Pos 5: Top-Right (2 o'clock) - Locked -->
+                    <div id="medallion-slot-5" class="medallion-node locked" data-slot="5" title="Locked Medallion 5">
+                        <div class="node-tag">5</div>
+                        <div class="node-icon">🔒</div>
+                    </div>
+
+                    <!-- Pos 6: Bottom-Right (4 o'clock) - Locked -->
+                    <div id="medallion-slot-6" class="medallion-node locked" data-slot="6" title="Locked Medallion 6">
+                        <div class="node-tag">6</div>
+                        <div class="node-icon">🔒</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Medallion Benefit Inspector Card -->
+            <div class="medallion-inspect-panel" id="medallion-inspect-panel">
+                <div class="inspect-header-row">
+                    <span id="inspect-status-badge" class="inspect-badge active-badge">ALWAYS ACTIVE</span>
+                    <span id="inspect-slot-num" class="inspect-slot-indicator">SLOT 1 • BOTTOM (6 O'CLOCK)</span>
+                </div>
+                <div class="inspect-icon-circle">
+                    <span id="inspect-icon" class="inspect-icon">⚡</span>
+                </div>
+                <div id="inspect-title" class="inspect-title">Sprint Speed Medallion</div>
+                
+                <div class="inspect-benefit-card">
+                    <div class="benefit-card-label">PERMANENT BENEFIT</div>
+                    <div id="inspect-benefit-val" class="benefit-card-val">+50% Movement Speed</div>
+                </div>
+
+                <div id="inspect-desc" class="inspect-desc-text">
+                    Permanently boosts running and walking velocity across all realms. Always active.
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-hint" style="margin-top: auto;">
+            <b>Tab / Esc:</b> Return to Menu
+        </div>
+    </div>
+
+    <!-- Tools Menu Overlay (Key Exploration Gear) -->
+    <div id="equippable-menu-overlay" class="hidden gba-submenu-window">
+        <div class="gba-menu-header">
+            <h2 class="gba-title">TOOLS</h2>
+        </div>
+        <div id="equippables-grid-container" class="item-grid" style="margin-top: 10px;"></div>
+        <div class="tab-hint" style="margin-top: auto;">
+            <b>K:</b> Use &nbsp;|&nbsp; <b>L:</b> Assign Button &nbsp;|&nbsp; <b>Tab / Esc:</b> Return to Menu
+        </div>
+    </div>
+
+    <!-- Supplies Menu Overlay (Bag & Consumable Provisions) -->
+    <div id="consumable-menu-overlay" class="hidden gba-submenu-window">
+        <div class="gba-menu-header">
+            <h2 class="gba-title">SUPPLIES</h2>
+        </div>
+        <div id="consumables-grid-container" class="consumables-grid" style="margin-top: 10px;"></div>
+        <div class="tab-hint" style="margin-top: auto;">
+            <b>K:</b> Use &nbsp;|&nbsp; <b>L:</b> Assign Button &nbsp;|&nbsp; <b>Tab / Esc:</b> Return to Menu
+        </div>
+    </div>
+
+    <!-- Accessories Menu Overlay (Passive Charms & Relics) -->
+    <div id="accessories-menu-overlay" class="hidden gba-submenu-window">
+        <div class="gba-menu-header">
+            <h2 class="gba-title">ACCESSORIES</h2>
+        </div>
+        <div id="accessories-grid-container" class="item-grid" style="margin-top: 10px;"></div>
+        <div class="tab-hint" style="margin-top: auto;">
+            <b>K:</b> Equip / Unequip &nbsp;|&nbsp; <b>Tab / Esc:</b> Return to Menu
+        </div>
+    </div>
+
+    <!-- Room Selection Menu Overlay (Warp & Entrance List) -->
+    <div id="rooms-menu-overlay" class="hidden gba-submenu-window">
+        <div class="gba-menu-header">
+            <h2 class="gba-title">ROOM SELECTION</h2>
+        </div>
+        <div id="rooms-grid-container" class="item-grid" style="margin-top: 10px; display:flex; flex-direction:column; gap:4px;"></div>
+        <div class="tab-hint" style="margin-top: auto;">
+            <b>K / Cross:</b> Warp to Room &nbsp;|&nbsp; <b>Tab / Esc:</b> Return to Menu
+        </div>
+    </div>
+
+    <!-- Map & Nautical Chart Overlay -->
+    <div id="map-menu-overlay" class="hidden gba-submenu-window">
+        <div class="gba-menu-header">
+            <h2 class="gba-title">WORLD MAP & NAUTICAL CHART</h2>
+        </div>
+        <div id="map-content-container" class="map-content-container" style="margin-top: 8px;"></div>
+        <div class="tab-hint" style="margin-top: auto;">
+            <b>K / Cross / Tab:</b> Close Map &nbsp;|&nbsp; <b>Tools:</b> Equip to Hotbar (J, I, L)
+        </div>
+    </div>
+
+    <!-- Cell Phone Menu Overlay (PokéNav Cellular Link & Room Chat) -->
+    <div id="cell-phone-menu-overlay" class="hidden gba-submenu-window">
+        <div class="gba-menu-header">
+            <h2 class="gba-title">CELL PHONE</h2>
+        </div>
+
+        <div class="cell-phone-menu-container" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; margin-top: 6px; margin-bottom: 6px;">
+            <div class="phone-screen" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #ffffff; border: 2px solid #000000; padding: 6px;">
+                <div class="phone-status-strip" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #000000; padding-bottom: 4px; margin-bottom: 4px; font-size: 11px;">
+                    <div id="chat-rate-counters" class="phone-rate-counters" title="Chat Limits: 3 per minute | 45 per hour">
+                        <span id="chat-counter-min" class="phone-counter-badge" style="background: #000000; color: #ffffff; padding: 1px 4px; font-weight: bold;">0/3m</span>
+                        <span id="chat-counter-hour" class="phone-counter-badge" style="background: #000000; color: #ffffff; padding: 1px 4px; font-weight: bold;">0/45h</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span id="chat-room-badge" class="phone-room-badge" style="background: #e8e8e8; border: 1px solid #000000; color: #000000; font-size: 9px; padding: 1px 4px; font-weight: bold;">WORLD</span>
+                        <button id="phone-notif-btn" class="phone-notif-btn" type="button" title="Toggle Room Chat Notifications" style="background: #ffffff; border: 1px solid #000000; font-size: 9px; cursor: pointer; padding: 2px 4px; font-weight: bold;">🔔 NOTIFS: ON</button>
+                        <a id="chat-auth-link" class="phone-auth-link" href="#" target="_self" style="color: #000000; font-size: 10px; font-weight: bold; text-decoration: underline; cursor: pointer;">[ Log In ]</a>
+                        <span id="chat-account-badge" class="phone-account-badge" style="display: none; font-size: 10px; font-weight: bold;"></span>
+                    </div>
+                </div>
+
+                <div id="chat-messages-log" class="chat-messages-log" tabindex="-1" style="flex: 1; overflow-y: auto; background: #ffffff; padding: 4px; font-size: 11px; line-height: 1.4; color: #000000; border: 1px solid #e0e0e0; margin-bottom: 6px;">
+                    <div class="chat-system-message">
+                        <span class="chat-sys-tag" style="background: #000000; color: #ffffff; padding: 1px 3px; font-weight: bold; font-size: 9px; margin-right: 4px;">PHONE</span>
+                        <span>Cell phone connected. Press Enter to send, Tab to open menu.</span>
+                    </div>
+                </div>
+
+                <form id="chat-input-form" class="chat-input-form" autocomplete="off" style="display: flex; gap: 6px; align-items: center;">
+                    <input 
+                        id="chat-input" 
+                        type="text" 
+                        placeholder="Type message..." 
+                        maxlength="70" 
+                        autocomplete="off" 
+                        spellcheck="false"
+                        style="flex: 1; height: 26px; border: 2px solid #000000; padding: 2px 8px; font-size: 12px; font-family: monospace; outline: none; background: #ffffff; color: #000000;"
+                    />
+                    <button id="chat-send-btn" type="submit" class="chat-send-btn" style="height: 26px; border: 2px solid #000000; background: #000000; color: #ffffff; font-weight: bold; padding: 0 10px; cursor: pointer; font-size: 11px;">
+                        <span>SEND</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Chat Tab Submenu Overlay (looks like main menu) -->
+        <div id="chat-tab-submenu" class="chat-tab-submenu gba-start-menu-window hidden">
+            <div id="chat-tab-submenu-list" class="gba-menu-list"></div>
+        </div>
+
+        <div class="tab-hint" style="margin-top: auto;">
+            <b>Tab:</b> Menu / Close Chat
+        </div>
+    </div>
+
+    <!-- Settings Menu Overlay (System & Audio Configuration) -->
+    <div id="debug-menu-overlay" class="hidden gba-submenu-window">
+        <div class="gba-menu-header">
+            <h2 class="gba-title">SETTINGS</h2>
+        </div>
+        <div class="tab-header-wrapper">
+            <div id="tab-header-scroll" class="tab-header">
+                <div id="tab-0-btn" class="tab-btn active">Controls</div>
+                <div id="tab-1-btn" class="tab-btn">Video &amp; Audio</div>
+                <div id="tab-2-btn" class="tab-btn">Event Log</div>
+                <div id="tab-3-btn" class="tab-btn">Game Variables</div>
+            </div>
+        </div>
+
+        <div class="tab-content">
+            <div id="tab-0-pane" class="tab-pane active">
+                <h2 style="margin-top: 0;">Keyboard &amp; PS5 Controller Mapping</h2>
+                <div style="line-height: 1.8; margin-top: 8px; font-size: 14px;">
+                    • <b>Move Character:</b> ESDF Keys / Left Joystick (160 Divisions, Slight / Medium / Full Tilt)<br>
+                    • <b>Menu Navigation (Pokemon Ruby Style):</b> E/D / Arrows (Up/Down) | K / Enter to Select<br>
+                    • <b>Select / Confirm (A Button):</b> K Key / Enter / Space / Cross (X) Button<br>
+                    • <b>Back / Close Menu:</b> Tab Key / Escape / Backspace<br>
+                    • <b>Rotate Camera (8 Positions):</b> U / O Keys | L1 / R1 Buttons in Overworld<br>
+                    • <b>Slot 1 Hotbar Item:</b> J Key / Square Button<br>
+                    • <b>Slot 2 Hotbar Item:</b> I Key / Triangle Button<br>
+                    • <b>Slot 3 Hotbar Item:</b> L Key / Circle Button<br>
+                    • <b>Open / Close Main Menu:</b> Tab Key / Options Button (PS5)<br>
+                    • <b>Modernized Scope:</b> Press while still for FP Mode | Hold while moving to Zoom<br>
+                    • <b>Bat Wings Ability:</b> Hold Slot Button to Ascend | Release to Fall | Hold Cross (K) to Cushion Descent<br>
+                    • <b>Sprint Speed Medallion:</b> Passively active (+50% movement and run velocity)<br>
+                    • <b>Toggle Walk / Run:</b> A Key (<span id="mode-label" class="mode-info">RUNNING</span>)<br>
+                    • <b>Status:</b> <span id="state-label" class="status-val">GROUNDED</span>
+                </div>
+            </div>
+
+            <div id="tab-1-pane" class="tab-pane">
+                <h2 style="margin-top: 0;">Video &amp; Audio Options</h2>
+                <div style="font-size: 12px; color: #8a99ad; margin-bottom: 12px;">
+                    • <b>Left Stick / E / D Keys:</b> Move Cursor Up / Down &nbsp;|&nbsp; 
+                    • <b>K Key / Cross:</b> Select / Exit Value Edit &nbsp;|&nbsp; 
+                    • <b>Left Stick / S / F Keys:</b> Adjust Volume / Cycle Option
+                </div>
+                <div id="item-fullscreen" class="menu-item selected">
+                    <span>Toggle Fullscreen Mode</span>
+                    <span id="fullscreen-status" class="mode-info">OFF</span>
+                </div>
+                <div id="audio-sfx-row" class="menu-item">
+                    <span>Sound Effects Volume</span>
+                    <span id="sfx-vol-val" class="var-val">100%</span>
+                </div>
+            </div>
+
+            <div id="tab-2-pane" class="tab-pane">
+                <h2 style="margin-top: 0; margin-bottom: 8px;">Real-Time Event Log</h2>
+                <div id="execution-log" class="log-container" style="background:#ffffff; border:1px solid #000000; border-radius:0; padding:12px; font-family:monospace; font-size:13px; color:#000000; flex: 1; overflow-y:auto;"></div>
+            </div>
+
+            <div id="tab-3-pane" class="tab-pane">
+                <h2 style="margin-top: 0; margin-bottom: 4px;">Running Engine Variables</h2>
+                <div style="font-size: 12px; color: #000000; margin-bottom: 10px;">
+                    • <b>E / D Keys or Left Joystick UP / DOWN:</b> Scroll Variable View
+                </div>
+                <div id="game-variables-container" style="overflow-y: auto; flex: 1; border: 1px solid #000000; border-radius: 0; padding: 10px; background: #ffffff; color: #000000;">
+                    <div id="game-variables-list" class="var-grid"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-hint">
+            <b>Left Stick / S / F Keys:</b> Switch Tab &nbsp;|&nbsp; <b>Left Stick / E / D Keys:</b> Select Row &nbsp;|&nbsp; <b>K / Cross:</b> Toggle Value Edit &nbsp;|&nbsp; <b>Tab / Esc:</b> Back
+        </div>
+    </div>
+
+    <!-- Radio Menu Overlay (BGM Tuning & Regional Music Configuration) -->
+    <div id="radio-menu-overlay" class="hidden gba-submenu-window">
+        <div class="gba-menu-header">
+            <h2 class="gba-title">RADIO</h2>
+        </div>
+
+        <div class="radio-content" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; margin-top: 6px;">
+            <div style="font-size: 11px; color: #555555; margin-bottom: 8px;">
+                • <b>Left Stick / E / D Keys:</b> Select Row &nbsp;|&nbsp; 
+                • <b>K Key / Cross:</b> Toggle Value Edit &nbsp;|&nbsp; 
+                • <b>Left Stick / S / F Keys:</b> Adjust Volume / Cycle Option
+            </div>
+            <div id="radio-options-list" class="gba-menu-options" style="flex: 1; overflow-y: auto;">
+                <div id="radio-bgm-row" class="menu-item selected">
+                    <span>Background Music Volume</span>
+                    <span id="radio-bgm-vol-val" class="var-val">100%</span>
+                </div>
+                <div id="radio-area-row" class="menu-item" style="padding: 10px 14px; flex-direction: column; align-items: center; justify-content: center; min-height: 105px;">
+                    <div id="radio-svg-gem-row" style="width: 100%; display: flex; justify-content: center; align-items: center;"></div>
+                </div>
+                <div id="radio-nov-track-row" class="menu-item">
+                    <span>Nov Area Music Track</span>
+                    <span id="radio-nov-track-val" class="mode-info">Track 1 (Nov Resonant Chords)</span>
+                </div>
+                <div id="radio-vow-track-row" class="menu-item">
+                    <span>Vow Area Music Track</span>
+                    <span id="radio-vow-track-val" class="mode-info">Track 1 (Vow Serene Woods)</span>
+                </div>
+                <div id="radio-vid-track-row" class="menu-item">
+                    <span>Vid Area Music Track</span>
+                    <span id="radio-vid-track-val" class="mode-info">Track 1 (Vid Motion Waterways)</span>
+                </div>
+                <div id="radio-pix-track-row" class="menu-item">
+                    <span>Pix Area Music Track</span>
+                    <span id="radio-pix-track-val" class="mode-info">Track 1 (Pix Frozen Plazas)</span>
+                </div>
+                <div id="radio-gem-track-row" class="menu-item">
+                    <span>Gem Area Music Track</span>
+                    <span id="radio-gem-track-val" class="mode-info">Track 1 (Center Gem Settlement)</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-hint" style="margin-top: auto;">
+            <b>Left Stick / S / F Keys:</b> Adjust / Cycle &nbsp;|&nbsp; <b>E / D:</b> Select Row &nbsp;|&nbsp; <b>K:</b> Edit &nbsp;|&nbsp; <b>Tab / Esc:</b> Return to Menu
+        </div>
+    </div>
+
+    <!-- WebGL Canvas with focusability -->
+    <canvas id="glCanvas" tabindex="0"></canvas>
+    </div> <!-- Close #game-screen-container -->
+
+    <script>
+        loadAllScriptsSequentially();
+    </script>
+</body>
+</html>
