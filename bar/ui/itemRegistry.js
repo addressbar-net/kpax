@@ -227,6 +227,15 @@ const ITEM_REGISTRY = {
         isAccessory: true,
         isSystem: false
     },
+    look_straight: {
+        id: "look_straight",
+        name: "Look Straight",
+        icon: "🎯",
+        val: "Facing Lock & 90° Turn (U / O)",
+        desc: "A focused gaze talisman. When equipped, Link walks and faces the same direction. S, D, E, and F move relative to his facing direction. U and O turn him by 90 degrees.",
+        isAccessory: true,
+        isSystem: false
+    },
     guardian_badge: { 
         id: "guardian_badge", 
         name: "Guardian Badge", 
@@ -254,6 +263,7 @@ const ITEM_REGISTRY = {
 // Accessories Registry (Accessible inside Accessories menu)
 const ACCESSORIES_REGISTRY = [
     ITEM_REGISTRY.walk_straight,
+    ITEM_REGISTRY.look_straight,
     ITEM_REGISTRY.guardian_badge,
     ITEM_REGISTRY.feather_badge
 ];

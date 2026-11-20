@@ -171,6 +171,21 @@ class GameStateManager {
         this.equippedAccessories[id] = !this.equippedAccessories[id];
         const isEquipped = this.equippedAccessories[id];
 
+        // Exclusive mutual unequip: Only one of Walk Straight or Look Straight can be equipped at a time
+        if (isEquipped) {
+            if (id === 'look_straight' && this.equippedAccessories['walk_straight']) {
+                this.equippedAccessories['walk_straight'] = false;
+                if (typeof window.EventBus !== 'undefined') {
+                    window.EventBus.emit('accessory:toggled', { id: 'walk_straight', isEquipped: false });
+                }
+            } else if (id === 'walk_straight' && this.equippedAccessories['look_straight']) {
+                this.equippedAccessories['look_straight'] = false;
+                if (typeof window.EventBus !== 'undefined') {
+                    window.EventBus.emit('accessory:toggled', { id: 'look_straight', isEquipped: false });
+                }
+            }
+        }
+
         if (typeof window.EventBus !== 'undefined') {
             window.EventBus.emit('accessory:toggled', { id, isEquipped });
             window.EventBus.emit('sfx:play', 'assign');

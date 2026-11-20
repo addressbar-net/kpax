@@ -415,8 +415,20 @@ class PlayerPhysics {
                 this.lockedZTargetFacing = null;
             }
 
+            const hasLookStraight = window.GameState && (
+                typeof window.GameState.hasEquippedAccessory === 'function'
+                    ? window.GameState.hasEquippedAccessory('look_straight')
+                    : (window.GameState.hasEquippedItem ? window.GameState.hasEquippedItem('look_straight') : false)
+            );
+
             let worldMoveX = 0, worldMoveZ = 0;
-            if (zoomSequenceState === 'HOLD_LOCKED' || (inputData && inputData.isZTargetHeld)) {
+            if (hasLookStraight) {
+                // Look Straight: S, D, E, and F move Link relative to the direction he is facing
+                const facingAngle = characterEntity.rotationY;
+                const sinFacing = Math.sin(facingAngle), cosFacing = Math.cos(facingAngle);
+                worldMoveX = cosFacing * inputX + sinFacing * inputZ;
+                worldMoveZ = -sinFacing * inputX + cosFacing * inputZ;
+            } else if (zoomSequenceState === 'HOLD_LOCKED' || (inputData && inputData.isZTargetHeld)) {
                 const facingAngle = (inputData && inputData.isZTargetHeld && this.lockedZTargetFacing !== null)
                     ? this.lockedZTargetFacing
                     : characterEntity.rotationY;
@@ -448,7 +460,9 @@ class PlayerPhysics {
                     if (moveSpeed > 0) {
                         characterEntity.position[0] += worldMoveX * this.swimSpeed * dt;
                         characterEntity.position[2] += worldMoveZ * this.swimSpeed * dt;
-                        characterEntity.rotationY = Math.atan2(-worldMoveX, -worldMoveZ);
+                        if (!hasLookStraight) {
+                            characterEntity.rotationY = Math.atan2(-worldMoveX, -worldMoveZ);
+                        }
                     }
 
                     const waterLevel = this.getWaterSurfaceElevation(characterEntity.position[0], characterEntity.position[2]);
@@ -576,7 +590,9 @@ class PlayerPhysics {
                     if (moveSpeed > 0) {
                         characterEntity.position[0] += worldMoveX * moveSpeed * dt;
                         characterEntity.position[2] += worldMoveZ * moveSpeed * dt;
-                        characterEntity.rotationY = Math.atan2(-worldMoveX, -worldMoveZ);
+                        if (!hasLookStraight) {
+                            characterEntity.rotationY = Math.atan2(-worldMoveX, -worldMoveZ);
+                        }
                     }
                     this.resolveWallCollisions(characterEntity);
                     break;
@@ -642,6 +658,8 @@ class PlayerPhysics {
                         if (inputData && inputData.isZTargetHeld) {
                             // Ocarina of Time Z-Targeting: lock facing direction forward while strafing left/right
                             characterEntity.rotationY = this.lockedZTargetFacing !== null ? this.lockedZTargetFacing : characterEntity.rotationY;
+                        } else if (hasLookStraight) {
+                            // Look Straight: Link maintains his facing direction while moving relative to it
                         } else if (zoomSequenceState !== 'HOLD_LOCKED') {
                             characterEntity.rotationY = Math.atan2(-worldMoveX, -worldMoveZ);
                         }
@@ -784,7 +802,9 @@ class PlayerPhysics {
                     if (moveSpeed > 0 && !this.isLockedInTransition) {
                         characterEntity.position[0] += worldMoveX * moveSpeed * dt;
                         characterEntity.position[2] += worldMoveZ * moveSpeed * dt;
-                        characterEntity.rotationY = Math.atan2(-worldMoveX, -worldMoveZ);
+                        if (!hasLookStraight) {
+                            characterEntity.rotationY = Math.atan2(-worldMoveX, -worldMoveZ);
+                        }
                     }
                     this.resolveWallCollisions(characterEntity);
 

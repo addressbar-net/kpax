@@ -74,6 +74,20 @@ class CameraController {
                 }
             });
 
+            window.EventBus.on('accessory:toggled', (data) => {
+                if (data && data.id === 'look_straight' && data.isEquipped) {
+                    const charEntity = window.GameState ? window.GameState.characterEntity : null;
+                    if (charEntity) {
+                        const STEP_90 = Math.PI / 2;
+                        charEntity.rotationY = Math.round(charEntity.rotationY / STEP_90) * STEP_90;
+                        this.restingSnapAngle = charEntity.rotationY;
+                        this.targetSnapAngle = charEntity.rotationY;
+                        this.isRotatingToSnap = false;
+                        this.snapCameraBehindCharacter(charEntity);
+                    }
+                }
+            });
+
             window.EventBus.on('camera:setZoomState', (active) => {
                 this.isTelescopeMovingZoom = active;
             });
@@ -176,6 +190,43 @@ class CameraController {
         return bestTarget;
     }
 
+    getNext90SnapAngle(currentAngle, dir) {
+        const S = Math.PI / 2; // 90 degrees
+        const EPSILON = 1e-6;
+
+        if (this.restingSnapAngle !== null && !this.isRotatingToSnap) {
+            return this.normalizeAngle(this.restingSnapAngle + dir * S);
+        }
+
+        let bestTarget = null;
+        let minDistance = Infinity;
+
+        for (let k = 0; k < 4; k++) {
+            const candidate = this.normalizeAngle(k * S);
+            let dist;
+            if (dir === 1) {
+                // CCW: candidate - currentAngle
+                dist = (candidate - currentAngle) % (2 * Math.PI);
+                if (dist < 0) dist += 2 * Math.PI;
+            } else {
+                // CW: currentAngle - candidate
+                dist = (currentAngle - candidate) % (2 * Math.PI);
+                if (dist < 0) dist += 2 * Math.PI;
+            }
+
+            if (dist > EPSILON && dist < minDistance) {
+                minDistance = dist;
+                bestTarget = candidate;
+            }
+        }
+
+        if (bestTarget === null) {
+            bestTarget = this.normalizeAngle(currentAngle + dir * S);
+        }
+
+        return bestTarget;
+    }
+
     snapCameraBehindCharacter(characterEntity, targetDistance = this.activeCamDistance, targetHeight = this.activeCamHeight) {
         if (!characterEntity) return;
         this.isRotatingToSnap = false;
@@ -220,25 +271,48 @@ class CameraController {
                 ? window.GameState.hasEquippedAccessory('walk_straight')
                 : (window.GameState.hasEquippedItem ? window.GameState.hasEquippedItem('walk_straight') : false)
         );
+        const hasLookStraight = window.GameState && (
+            typeof window.GameState.hasEquippedAccessory === 'function'
+                ? window.GameState.hasEquippedAccessory('look_straight')
+                : (window.GameState.hasEquippedItem ? window.GameState.hasEquippedItem('look_straight') : false)
+        );
 
         if (isCCW) {
-            if (this.isRotatingToSnap && this.currentSnapDir === 1) {
+            if (hasLookStraight) {
+                // Look Straight: U turns Link 90 degrees counterclockwise
+                const targetFacing = this.getNext90SnapAngle(characterEntity.rotationY, 1);
+                characterEntity.rotationY = targetFacing;
+                this.targetSnapAngle = targetFacing;
+                this.camRotationSpeed = 8.0;
+            } else if (this.isRotatingToSnap && this.currentSnapDir === 1) {
                 this.targetSnapAngle = this.normalizeAngle(this.targetSnapAngle + S);
+                this.camRotationSpeed = 3.0;
             } else if (hasWalkStraight) {
                 this.targetSnapAngle = this.getNextSnapAngle(currentAngle, 1);
+                this.camRotationSpeed = 3.0;
             } else {
                 this.targetSnapAngle = this.normalizeAngle(currentAngle + S);
+                this.camRotationSpeed = 3.0;
             }
             this.isRotatingToSnap = true;
             this.currentSnapDir = 1;
             this.isSnappedTo8Way = false;
         } else if (isCW) {
-            if (this.isRotatingToSnap && this.currentSnapDir === -1) {
+            if (hasLookStraight) {
+                // Look Straight: O turns Link 90 degrees clockwise
+                const targetFacing = this.getNext90SnapAngle(characterEntity.rotationY, -1);
+                characterEntity.rotationY = targetFacing;
+                this.targetSnapAngle = targetFacing;
+                this.camRotationSpeed = 8.0;
+            } else if (this.isRotatingToSnap && this.currentSnapDir === -1) {
                 this.targetSnapAngle = this.normalizeAngle(this.targetSnapAngle - S);
+                this.camRotationSpeed = 3.0;
             } else if (hasWalkStraight) {
                 this.targetSnapAngle = this.getNextSnapAngle(currentAngle, -1);
+                this.camRotationSpeed = 3.0;
             } else {
                 this.targetSnapAngle = this.normalizeAngle(currentAngle - S);
+                this.camRotationSpeed = 3.0;
             }
             this.isRotatingToSnap = true;
             this.currentSnapDir = -1;
@@ -259,8 +333,8 @@ class CameraController {
                 newAngle = this.targetSnapAngle;
                 this.isRotatingToSnap = false; // Stop! Must release and press again
                 this.isSnappedTo8Way = hasWalkStraight;
-                this.restingSnapAngle = hasWalkStraight ? this.targetSnapAngle : null;
-                this.snapAnchorCharPos = hasWalkStraight ? [characterEntity.position[0], characterEntity.position[1], characterEntity.position[2]] : null;
+                this.restingSnapAngle = (hasWalkStraight || hasLookStraight) ? this.targetSnapAngle : null;
+                this.snapAnchorCharPos = (hasWalkStraight || hasLookStraight) ? [characterEntity.position[0], characterEntity.position[1], characterEntity.position[2]] : null;
             } else {
                 newAngle = this.normalizeAngle(currentAngle + step);
             }
@@ -272,8 +346,8 @@ class CameraController {
                 newAngle = this.targetSnapAngle;
                 this.isRotatingToSnap = false; // Stop! Must release and press again
                 this.isSnappedTo8Way = hasWalkStraight;
-                this.restingSnapAngle = hasWalkStraight ? this.targetSnapAngle : null;
-                this.snapAnchorCharPos = hasWalkStraight ? [characterEntity.position[0], characterEntity.position[1], characterEntity.position[2]] : null;
+                this.restingSnapAngle = (hasWalkStraight || hasLookStraight) ? this.targetSnapAngle : null;
+                this.snapAnchorCharPos = (hasWalkStraight || hasLookStraight) ? [characterEntity.position[0], characterEntity.position[1], characterEntity.position[2]] : null;
             } else {
                 newAngle = this.normalizeAngle(currentAngle - step);
             }
@@ -391,6 +465,16 @@ class CameraController {
                     const headingCos = Math.cos(characterEntity.rotationY);
                     targetDX = headingSin * this.activeCamDistance;
                     targetDZ = headingCos * this.activeCamDistance;
+                } else if (window.GameState && (typeof window.GameState.hasEquippedAccessory === 'function' ? window.GameState.hasEquippedAccessory('look_straight') : false)) {
+                    if (this.isRotatingToSnap) {
+                        targetDX = (targetDX / currentDist) * this.activeCamDistance;
+                        targetDZ = (targetDZ / currentDist) * this.activeCamDistance;
+                    } else {
+                        const headingSin = Math.sin(characterEntity.rotationY);
+                        const headingCos = Math.cos(characterEntity.rotationY);
+                        targetDX = headingSin * this.activeCamDistance;
+                        targetDZ = headingCos * this.activeCamDistance;
+                    }
                 } else if (currentDist > 0.0001) {
                     targetDX = (targetDX / currentDist) * this.activeCamDistance;
                     targetDZ = (targetDZ / currentDist) * this.activeCamDistance;

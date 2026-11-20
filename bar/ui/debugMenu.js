@@ -179,6 +179,7 @@ class DebugMenu {
                     "Speed Mode": inputData.isRunToggled ? `RUNNING` : `WALKING`,
                     "Tilt Tier": (inputData.tiltTier || 'NONE').toUpperCase(),
                     "Walk Straight": gs.hasEquippedAccessory('walk_straight') ? 'EQUIPPED' : 'OFF',
+                    "Look Straight": gs.hasEquippedAccessory('look_straight') ? 'EQUIPPED' : 'OFF',
                     "Held Object": gs.heldEntity ? gs.heldEntity.name : 'NONE',
                     "Nearby Interactable": gs.nearbyInteractable ? gs.nearbyInteractable.name : 'NONE',
                     "Pending Ledge Action": gs.pendingLedgeAction ? gs.pendingLedgeAction.type : 'NONE',
@@ -215,7 +216,8 @@ class DebugMenu {
             ]).filter(Boolean);
 
             this.accessoryGridItems = (typeof ACCESSORIES_REGISTRY !== 'undefined' ? ACCESSORIES_REGISTRY : [
-                ITEM_REGISTRY.walk_straight
+                ITEM_REGISTRY.walk_straight,
+                ITEM_REGISTRY.look_straight
             ]).filter(Boolean);
 
             this.assignedHotbar = {
@@ -1617,7 +1619,8 @@ class DebugMenu {
 
         if (!this.accessoryGridItems || this.accessoryGridItems.length === 0) {
             this.accessoryGridItems = (typeof ACCESSORIES_REGISTRY !== 'undefined' ? ACCESSORIES_REGISTRY : [
-                ITEM_REGISTRY.walk_straight
+                ITEM_REGISTRY.walk_straight,
+                ITEM_REGISTRY.look_straight
             ]).filter(Boolean);
         }
 
