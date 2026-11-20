@@ -453,9 +453,9 @@ class PlayerPhysics {
                         characterEntity.position[1] = waterLevel - 0.15;
                     }
 
-                    // Only climb out of water onto land if not in drop cooldown and stepping onto a gentle walkable shore
+                    // Only climb out of water onto land if not in drop cooldown and stepping onto a walkable shore or dock
                     if (window.CollisionWorld && (!this.waterDropCooldown || this.waterDropCooldown <= 0)) {
-                        const solidGroundY = window.CollisionWorld.getGroundHeight(characterEntity.position[0], characterEntity.position[2], characterEntity.position[1], 0.25, 0.8);
+                        const solidGroundY = window.CollisionWorld.getGroundHeight(characterEntity.position[0], characterEntity.position[2], characterEntity.position[1], 0.60, 0.8);
                         if (solidGroundY !== null && solidGroundY >= (waterLevel !== null ? waterLevel - 0.05 : -0.05)) {
                             characterEntity.position[1] = solidGroundY;
                             this.currentState = window.State.GROUNDED;
