@@ -822,8 +822,8 @@ class GLTFModel {
                             this.cpuTriTriangles = this.cpuTriTriangles || [];
                             const matLower = matName.toLowerCase();
                             const nodeLower = nodeName.toLowerCase();
-                            const isObstacleProp = matLower.includes('timber') ||
-                                                   matLower.includes('fence') ||
+                            // Do not treat architectural timber, decks, or terraces as obstacle props
+                            const isObstacleProp = matLower.includes('fence') ||
                                                    matLower.includes('rail') ||
                                                    matLower.includes('barrier') ||
                                                    matLower.includes('sign') ||
@@ -1102,7 +1102,8 @@ class GameObject {
             for (let i = 0; i < count; i++) {
                 const idx = candidateIndices ? candidateIndices[i] : i;
                 const meta = metas[idx];
-                if (meta.ny < 0.2 || meta.invDet === 0.0 || meta.isObstacleProp) continue;
+                // Most upward-facing planes (ny >= 0.2) provide ground collision; obstacle props are walkable if surface is relatively flat (ny >= 0.6)
+                if (meta.ny < 0.2 || meta.invDet === 0.0 || (meta.isObstacleProp && meta.ny < 0.6)) continue;
                 if (meta.maxY < rayFloor || meta.minY > rayCeiling) continue;
                 if (x < meta.minX || x > meta.maxX || z < meta.minZ || z > meta.maxZ) continue;
 
@@ -1126,7 +1127,7 @@ class GameObject {
         } else {
             for (let i = 0; i < count; i++) {
                 const idx = candidateIndices ? candidateIndices[i] : i;
-                if (metas && metas[idx] && metas[idx].isObstacleProp) continue;
+                if (metas && metas[idx] && metas[idx].isObstacleProp && metas[idx].ny < 0.6) continue;
                 const tri = tris[idx];
 
                 SCRATCH_PA[0] = tri[0][0] * scaleX + posX;

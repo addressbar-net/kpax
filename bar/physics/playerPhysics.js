@@ -388,7 +388,7 @@ class PlayerPhysics {
                 this.pitchX = Math.max(-1.0, Math.min(1.0, this.pitchX));
             }
             if (window.CollisionWorld) {
-                const currentGroundY = window.CollisionWorld.getGroundHeight(characterEntity.position[0], characterEntity.position[2], characterEntity.position[1], 0.35, 5.0);
+                const currentGroundY = window.CollisionWorld.getGroundHeight(characterEntity.position[0], characterEntity.position[2], characterEntity.position[1], 0.60, 5.0);
                 if (currentGroundY !== null) characterEntity.position[1] = currentGroundY;
             }
             this.resolveWallCollisions(characterEntity);
@@ -597,7 +597,7 @@ class PlayerPhysics {
                         }
 
                         const stepDist = Math.hypot(nextX - characterEntity.position[0], nextZ - characterEntity.position[2]);
-                        const maxWalkStepUp = Math.min(0.4, stepDist * Math.tan(this.maxSlopeAngle * Math.PI / 180.0) + 0.15);
+                        const maxWalkStepUp = Math.min(0.60, stepDist * Math.tan(this.maxSlopeAngle * Math.PI / 180.0) + 0.25);
 
                         const targetTriData = window.CollisionWorld ? window.CollisionWorld.getGroundTriangle(nextX, nextZ, characterEntity.position[1], maxWalkStepUp, 5.0) : null;
 
@@ -656,7 +656,7 @@ class PlayerPhysics {
                         characterEntity.position[0] = Math.round(characterEntity.position[0] * 10) / 10;
                         characterEntity.position[2] = Math.round(characterEntity.position[2] * 10) / 10;
                         this.resolveWallCollisions(characterEntity);
-                        const currentGroundY = window.CollisionWorld.getGroundHeight(characterEntity.position[0], characterEntity.position[2], characterEntity.position[1], 0.35, 5.0);
+                        const currentGroundY = window.CollisionWorld.getGroundHeight(characterEntity.position[0], characterEntity.position[2], characterEntity.position[1], 0.60, 5.0);
                         if (currentGroundY === null) {
                             this.currentState = window.State.FALLING;
                             this.jumpOffPoint = [...characterEntity.position];
