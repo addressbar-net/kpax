@@ -126,7 +126,14 @@ class PlayerPhysics {
     }
 
     checkWaterSurfaces(characterEntity) {
-        if (this.currentState === window.State.BOATING) {
+        if (this.currentState === window.State.BOATING || this.currentState === window.State.CLIMBING || this.currentState === window.State.HOPPING || this.isLockedInTransition) {
+            if (this.currentState === window.State.BOATING) {
+                this.isUnderwater = false;
+            }
+            return;
+        }
+
+        if (this.waterDropCooldown > 0 && this.currentState === window.State.GROUNDED) {
             this.isUnderwater = false;
             return;
         }
@@ -377,7 +384,7 @@ class PlayerPhysics {
 
         this.checkWaterSurfaces(characterEntity);
 
-        if (this.isLockedInTransition || zoomSequenceState === 'ZOOM_IN' || zoomSequenceState === 'PAUSE_HOLD') {
+        if (this.isLockedInTransition || this.currentState === window.State.CLIMBING || this.currentState === window.State.HOPPING || zoomSequenceState === 'ZOOM_IN' || zoomSequenceState === 'PAUSE_HOLD') {
             inputX = 0;
             inputZ = 0;
             moveSpeed = 0;
@@ -482,6 +489,7 @@ class PlayerPhysics {
                         this.actionDuration = Math.min(0.60, Math.max(0.35, h * 0.35));
                         this.startPos = [...characterEntity.position];
                         this.targetPos = [...this.pendingLedgeAction.targetPos];
+                        this.waterDropCooldown = 0.6;
                         if (typeof window.EventBus !== 'undefined') window.EventBus.emit('sfx:play', 'assign');
                         this.pendingLedgeAction = null;
                         return;
@@ -551,7 +559,10 @@ class PlayerPhysics {
                         characterEntity.position = [...this.targetPos];
                         this.currentState = window.State.GROUNDED;
                         this.isLockedInTransition = false;
+                        this.isUnderwater = false;
+                        this.waterDropCooldown = 0.6;
                         this.pendingLedgeAction = null;
+                        this._wasStoppedLastFrame = true;
                     }
                     break;
 
