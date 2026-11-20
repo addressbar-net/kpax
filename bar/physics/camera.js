@@ -41,6 +41,7 @@ class CameraController {
         this.isSnappedTo8Way = false;
         this.restingSnapAngle = null;
         this.snapAnchorCharPos = null;
+        this.occlusionFraction = 1.0;
         this._scratchRenderCamPos = [0, height, distance];
         this._scratchCamTarget = [0, 0, 0];
         this._scratchResult = { renderCamPos: this._scratchRenderCamPos, camTarget: this._scratchCamTarget };
@@ -113,6 +114,7 @@ class CameraController {
                 );
 
                 gs.cameraPos = renderCamPos;
+                gs.unoccludedCamPos = [this.camPos[0], this.camPos[1], this.camPos[2]];
                 gs.cameraTarget = camTarget;
                 gs.zoomSequenceState = this.zoomSequenceState;
             });
@@ -374,23 +376,15 @@ class CameraController {
                 let currentDist = Math.hypot(targetDX, targetDZ);
 
                 if (currentState === 'BOATING') {
-                    // Smoothly steer camera behind the boat's heading when sailing
-                    const headingSin = Math.sin(characterEntity.rotationY);
-                    const headingCos = Math.cos(characterEntity.rotationY);
+                    // Smoothly steer camera behind the boat's heading when sailing using angular slerp
+                    const targetAngle = characterEntity.rotationY;
+                    const currentCamAngle = Math.atan2(targetDX, targetDZ);
+                    const angleDiff = this.normalizeAngle(targetAngle - currentCamAngle);
+                    const boatAlignSpeed = 3.5;
+                    const blendedAngle = currentCamAngle + angleDiff * (1.0 - Math.exp(-boatAlignSpeed * dt));
                     const boatCamDist = 6.2;
-                    const behindX = headingSin * boatCamDist;
-                    const behindZ = headingCos * boatCamDist;
-
-                    const boatAlignSpeed = 4.0;
-                    const alignBlend = 1.0 - Math.exp(-boatAlignSpeed * dt);
-                    targetDX += (behindX - targetDX) * alignBlend;
-                    targetDZ += (behindZ - targetDZ) * alignBlend;
-
-                    const len = Math.hypot(targetDX, targetDZ);
-                    if (len > 0.0001) {
-                        targetDX = (targetDX / len) * boatCamDist;
-                        targetDZ = (targetDZ / len) * boatCamDist;
-                    }
+                    targetDX = Math.sin(blendedAngle) * boatCamDist;
+                    targetDZ = Math.cos(blendedAngle) * boatCamDist;
                 } else if (window.GameState && window.GameState.lastInputData && window.GameState.lastInputData.isZTargetHeld) {
                     // Position camera directly behind character facing the character's facing direction
                     const headingSin = Math.sin(characterEntity.rotationY);
@@ -431,7 +425,7 @@ class CameraController {
             }
 
             camTarget[0] = characterEntity.position[0];
-            camTarget[1] = characterEntity.position[1] + 1.0;
+            camTarget[1] = characterEntity.position[1] + (currentState === 'SWIMMING' ? 0.6 : 1.0);
             camTarget[2] = characterEntity.position[2];
             
             renderCamPos[0] = this.camPos[0];
@@ -441,11 +435,27 @@ class CameraController {
             if (window.CollisionWorld) {
                 const hitFraction = window.CollisionWorld.raycastSegment(camTarget, this.camPos);
                 if (hitFraction !== null) {
-                    const paddedFraction = Math.max(0.05, hitFraction - 0.05);
-                    renderCamPos[0] = camTarget[0] + (this.camPos[0] - camTarget[0]) * paddedFraction;
-                    renderCamPos[1] = camTarget[1] + (this.camPos[1] - camTarget[1]) * paddedFraction;
-                    renderCamPos[2] = camTarget[2] + (this.camPos[2] - camTarget[2]) * paddedFraction;
+                    // Maintain a minimum standoff distance of at least 32% (~1.6m) so camera never collapses into player
+                    const targetFraction = Math.max(0.32, hitFraction - 0.06);
+                    if (targetFraction < this.occlusionFraction) {
+                        // Rapid pull-in to prevent wall clipping
+                        this.occlusionFraction += (targetFraction - this.occlusionFraction) * (1.0 - Math.exp(-25.0 * dt));
+                    } else {
+                        // Smooth ease-out to prevent alternating-frame oscillation glitch
+                        this.occlusionFraction += (targetFraction - this.occlusionFraction) * (1.0 - Math.exp(-6.0 * dt));
+                    }
+                } else {
+                    // Smooth recovery to full camera distance without sudden snapping
+                    this.occlusionFraction += (1.0 - this.occlusionFraction) * (1.0 - Math.exp(-6.0 * dt));
                 }
+
+                if (this.occlusionFraction < 0.999) {
+                    renderCamPos[0] = camTarget[0] + (this.camPos[0] - camTarget[0]) * this.occlusionFraction;
+                    renderCamPos[1] = camTarget[1] + (this.camPos[1] - camTarget[1]) * this.occlusionFraction;
+                    renderCamPos[2] = camTarget[2] + (this.camPos[2] - camTarget[2]) * this.occlusionFraction;
+                }
+            } else {
+                this.occlusionFraction = 1.0;
             }
         }
 

@@ -70,6 +70,7 @@ class PlayerPhysics {
         this.pendingLedgeAction = null; 
         this._wasStoppedLastFrame = false;
         this.lockedZTargetFacing = null;
+        this.waterDropCooldown = 0.0;
 
         this.bindEventBus();
     }
@@ -146,9 +147,10 @@ class PlayerPhysics {
 
         if (isWater) {
             this.isUnderwater = true;
-            if (this.currentState !== window.State.SWIMMING && this.currentState !== window.State.BOATING) {
+            if (this.currentState !== window.State.SWIMMING && this.currentState !== window.State.BOATING && this.currentState !== window.State.FLOATING) {
                 this.currentState = window.State.SWIMMING;
                 this.verticalVelocity = 0.0;
+                this.isLockedInTransition = false;
                 if (typeof window.EventBus !== 'undefined') window.EventBus.emit('sfx:play', 'land');
             }
         } else {
@@ -417,6 +419,11 @@ class PlayerPhysics {
             } else {
                 let camDX = characterEntity.position[0] - camPos[0], camDZ = characterEntity.position[2] - camPos[2];
                 let forwardLen = Math.hypot(camDX, camDZ);
+                if (forwardLen < 0.6 && window.GameState && window.GameState.unoccludedCamPos) {
+                    camDX = characterEntity.position[0] - window.GameState.unoccludedCamPos[0];
+                    camDZ = characterEntity.position[2] - window.GameState.unoccludedCamPos[2];
+                    forwardLen = Math.hypot(camDX, camDZ);
+                }
                 const fwdX = forwardLen > 0.0001 ? camDX / forwardLen : 0, fwdZ = forwardLen > 0.0001 ? camDZ / forwardLen : -1;
                 worldMoveX = -fwdZ * inputX + fwdX * (-inputZ);
                 worldMoveZ = fwdX * inputX + fwdZ * (-inputZ);
@@ -428,6 +435,9 @@ class PlayerPhysics {
                     break;
 
                 case window.State.SWIMMING:
+                    if (this.waterDropCooldown > 0) {
+                        this.waterDropCooldown -= dt;
+                    }
                     if (moveSpeed > 0) {
                         characterEntity.position[0] += worldMoveX * this.swimSpeed * dt;
                         characterEntity.position[2] += worldMoveZ * this.swimSpeed * dt;
@@ -442,9 +452,11 @@ class PlayerPhysics {
                     if (waterLevel !== null && characterEntity.position[1] > waterLevel - 0.15) {
                         characterEntity.position[1] = waterLevel - 0.15;
                     }
-                    if (window.CollisionWorld) {
-                        const solidGroundY = window.CollisionWorld.getGroundHeight(characterEntity.position[0], characterEntity.position[2], characterEntity.position[1], 0.6, 1.2);
-                        if (solidGroundY !== null && solidGroundY >= (waterLevel !== null ? waterLevel - 0.1 : 0.0)) {
+
+                    // Only climb out of water onto land if not in drop cooldown and stepping onto a gentle walkable shore
+                    if (window.CollisionWorld && (!this.waterDropCooldown || this.waterDropCooldown <= 0)) {
+                        const solidGroundY = window.CollisionWorld.getGroundHeight(characterEntity.position[0], characterEntity.position[2], characterEntity.position[1], 0.25, 0.8);
+                        if (solidGroundY !== null && solidGroundY >= (waterLevel !== null ? waterLevel - 0.05 : -0.05)) {
                             characterEntity.position[1] = solidGroundY;
                             this.currentState = window.State.GROUNDED;
                             this.isUnderwater = false;
@@ -640,16 +652,30 @@ class PlayerPhysics {
                             this.resolveWallCollisions(characterEntity);
                         } else {
                             // Stepping off open edge
-                            this.currentState = window.State.JUMP_DOWN;
-                            this.isLockedInTransition = true;
-                            this.actionTimer = 0.0;
-                            this.actionDuration = 0.15;
-                            this.verticalVelocity = 2.0;
-                            this.airVelocity[0] = worldMoveX * moveSpeed;
-                            this.airVelocity[1] = worldMoveZ * moveSpeed;
-                            characterEntity.position[0] = nextX;
-                            characterEntity.position[2] = nextZ;
-                            this.jumpOffPoint = [...characterEntity.position];
+                            const waterLevel = this.getWaterSurfaceElevation(nextX, nextZ);
+                            if (waterLevel !== null && characterEntity.position[1] <= waterLevel + 0.5) {
+                                // Direct smooth walk-off from low parcel bank directly into swimming locomotion
+                                characterEntity.position[0] = nextX;
+                                characterEntity.position[2] = nextZ;
+                                characterEntity.position[1] = waterLevel - 0.15;
+                                this.currentState = window.State.SWIMMING;
+                                this.isUnderwater = true;
+                                this.verticalVelocity = 0.0;
+                                this.isLockedInTransition = false;
+                                this.waterDropCooldown = 0.5; // 500ms cooldown prevents instant snap back to ledge
+                                if (typeof window.EventBus !== 'undefined') window.EventBus.emit('sfx:play', 'land');
+                            } else {
+                                this.currentState = window.State.JUMP_DOWN;
+                                this.isLockedInTransition = true;
+                                this.actionTimer = 0.0;
+                                this.actionDuration = 0.15;
+                                this.verticalVelocity = 2.0;
+                                this.airVelocity[0] = worldMoveX * moveSpeed;
+                                this.airVelocity[1] = worldMoveZ * moveSpeed;
+                                characterEntity.position[0] = nextX;
+                                characterEntity.position[2] = nextZ;
+                                this.jumpOffPoint = [...characterEntity.position];
+                            }
                         }
                     } else if (window.CollisionWorld && !this._wasStoppedLastFrame) {
                         // 0.1 increment rule upon stopping in 3D rooms (run once when coming to a stop)
@@ -707,6 +733,21 @@ class PlayerPhysics {
                         characterEntity.rotationY = Math.atan2(-worldMoveX, -worldMoveZ);
                     }
                     this.resolveWallCollisions(characterEntity);
+
+                    const waterSurface = this.getWaterSurfaceElevation(characterEntity.position[0], characterEntity.position[2]);
+                    if (waterSurface !== null && characterEntity.position[1] <= waterSurface + 0.05 && this.verticalVelocity <= 0) {
+                        characterEntity.position[1] = waterSurface - 0.15;
+                        this.verticalVelocity = 0.0;
+                        this.airVelocity[0] = 0.0;
+                        this.airVelocity[1] = 0.0;
+                        this.currentState = window.State.SWIMMING;
+                        this.isUnderwater = true;
+                        this.isLockedInTransition = false;
+                        this.waterDropCooldown = 0.5;
+                        if (typeof window.EventBus !== 'undefined') window.EventBus.emit('sfx:play', 'land');
+                        break;
+                    }
+
                     const maxLandingStepUp = Math.max(0.25, Math.abs(this.verticalVelocity * dt) + 0.1);
                     const landingTriData = window.CollisionWorld ? window.CollisionWorld.getGroundTriangle(characterEntity.position[0], characterEntity.position[2], characterEntity.position[1], maxLandingStepUp, 500.0) : null;
                     if (landingTriData !== null && characterEntity.position[1] <= landingTriData.heightY && this.verticalVelocity <= 0) {
