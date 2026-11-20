@@ -341,9 +341,9 @@ class CharacterAnimator {
             this.animTimer += dt * (isMoving ? 6.0 : 2.5);
             const swimPhase = this.animTimer;
 
-            // Body horizontal prone pitch (belly down facing water) with gentle surface bobbing
+            // Body horizontal prone pitch (belly down facing water) submerged cleanly at water surface with gentle surface bobbing
             const swimBob = Math.sin(swimPhase * 0.7) * 0.02;
-            this.makeJointTransform(this._matTorso, this.joints.torso[0], this.joints.torso[1], this.joints.torso[2], -1.25, 0, 0, 0, -0.05 + swimBob, 0);
+            this.makeJointTransform(this._matTorso, this.joints.torso[0], this.joints.torso[1], this.joints.torso[2], -1.25, 0, 0, 0, -0.70 + swimBob, 0);
             this.applyLimbMatrix(model, 'torso', this._matTorso);
             this.applyLimbMatrix(model, 'equipment', this._matTorso);
 
@@ -825,7 +825,7 @@ class CharacterAnimator {
             rp._animTimer += dt * (isMoving ? 6.0 : 2.5);
             const swimPhase = rp._animTimer;
             const swimBob = Math.sin(swimPhase * 0.7) * 0.02;
-            this.makeJointTransform(this._matTorso, this.joints.torso[0], this.joints.torso[1], this.joints.torso[2], -1.25, 0, 0, 0, -0.05 + swimBob, 0);
+            this.makeJointTransform(this._matTorso, this.joints.torso[0], this.joints.torso[1], this.joints.torso[2], -1.25, 0, 0, 0, -0.70 + swimBob, 0);
             this.applyLimbMatrix(model, 'torso', this._matTorso);
             this.applyLimbMatrix(model, 'equipment', this._matTorso);
             this.makeChildTransform(this._matHead, this._matTorso, this.joints.neck[0], this.joints.neck[1], this.joints.neck[2], 0.95, 0, 0);

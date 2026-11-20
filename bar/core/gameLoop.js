@@ -1306,63 +1306,58 @@ function updateSeaCoordinatesHUD() {
         ? window.CollisionWorld.checkMeshBeneath(char.position[0], char.position[2], char.position[1])
         : null;
 
-    if (!groundHit) {
-        // No mesh beneath character -> Open Sea!
-        locName = "OPEN SEA - UNCHARTED";
+    const maxTerritoryRadius = roomDef.seaRadius || 200.0;
 
-        if (!gs.isOpenSea) {
-            // Venture into Open Sea: unload room geometry and navigate by coordinates
-            console.log(`[Open Sea Transition] Venturing off room meshes into Open Sea from '${currentRoomName}'.`);
-            gs.isOpenSea = true;
-            if (worldEntity) worldEntity.visible = false;
-            const deltaX = globalX - char.position[0];
-            const deltaZ = globalZ - char.position[2];
-            char.position[0] = globalX;
-            char.position[2] = globalZ;
-            if (phys.activeVehicle) {
-                phys.activeVehicle.position[0] = globalX;
-                phys.activeVehicle.position[2] = globalZ;
-            }
-            if (window.cameraControllerInstance && window.cameraControllerInstance.camPos) {
-                window.cameraControllerInstance.camPos[0] += deltaX;
-                window.cameraControllerInstance.camPos[2] += deltaZ;
-            }
-            if (typeof window.EventBus !== 'undefined') {
-                window.EventBus.emit('camera:snapBehind');
-            }
-            currentRoomName = 'open_sea';
-            gs.currentRoom = 'open_sea';
+    if (!gs.isOpenSea) {
+        if (groundHit) {
+            locName = groundHit.isCoastal ? "COASTAL EXPANSE" : (roomDef.name || currentRoomName.toUpperCase().replace('_', ' '));
+            if (worldEntity) worldEntity.visible = true;
         } else {
-            // While in Open Sea, check proximity to registered rooms at their actual coordinates
-            if (window.ROOM_COORDINATES && !isTransitioning) {
-                for (const [rKey, rInfo] of Object.entries(window.ROOM_COORDINATES)) {
-                    if (rInfo.atSea === false) continue;
-                    const distToRoom = Math.hypot(globalX - rInfo.x, globalZ - rInfo.z);
-                    if (distToRoom <= (rInfo.seaRadius || 180.0)) {
-                        console.log(`[Open Sea Arrival] Approached room '${rKey}' at sea (dist: ${distToRoom.toFixed(1)}m <= ${rInfo.seaRadius}m). Loading room.`);
-                        gs.isOpenSea = false;
-                        const localX = globalX - rInfo.x;
-                        const localZ = globalZ - rInfo.z;
-                        loadRoom(rKey, 'open_sea', false, [localX, 0.0, localZ]);
-                        if (typeof window.EventBus !== 'undefined') {
-                            window.EventBus.emit('camera:snapBehind');
-                        }
-                        break;
-                    }
+            // No mesh beneath character: in local waters or venturing into Open Sea
+            if (distFromOrigin > maxTerritoryRadius) {
+                // Ventured beyond territorial waters of current room into Open Sea
+                console.log(`[Open Sea Transition] Venturing beyond territorial waters (${distFromOrigin.toFixed(1)}m > ${maxTerritoryRadius}m) into Open Sea from '${currentRoomName}'.`);
+                gs.isOpenSea = true;
+                if (worldEntity) worldEntity.visible = false;
+                const deltaX = globalX - char.position[0];
+                const deltaZ = globalZ - char.position[2];
+                char.position[0] = globalX;
+                char.position[2] = globalZ;
+                if (phys.activeVehicle) {
+                    phys.activeVehicle.position[0] = globalX;
+                    phys.activeVehicle.position[2] = globalZ;
                 }
+                if (window.cameraControllerInstance && window.cameraControllerInstance.camPos) {
+                    window.cameraControllerInstance.camPos[0] += deltaX;
+                    window.cameraControllerInstance.camPos[2] += deltaZ;
+                }
+                currentRoomName = 'open_sea';
+                gs.currentRoom = 'open_sea';
+                locName = "OPEN SEA - UNCHARTED";
+            } else {
+                // In local room's territorial waters (e.g. swimming in harbor/sea around island)
+                locName = roomDef.name ? `${roomDef.name} WATERS` : "TEMPLE HARBOR";
+                if (worldEntity) worldEntity.visible = true;
             }
         }
     } else {
-        // Mesh exists beneath character
-        if (gs.isOpenSea) {
-            gs.isOpenSea = false;
-            if (worldEntity) worldEntity.visible = true;
-        }
+        // While navigating Open Sea, check proximity to registered rooms at their actual coordinates
+        locName = "OPEN SEA - UNCHARTED";
 
-        if (groundHit.isCoastal) {
-            locName = "COASTAL EXPANSE";
-        } else {
-            locName = roomDef.name || currentRoomName.toUpperCase().replace('_', ' ');
+        if (window.ROOM_COORDINATES && !isTransitioning) {
+            for (const [rKey, rInfo] of Object.entries(window.ROOM_COORDINATES)) {
+                if (rInfo.atSea === false) continue;
+                const distToRoom = Math.hypot(globalX - rInfo.x, globalZ - rInfo.z);
+                if (distToRoom <= (rInfo.seaRadius || 180.0)) {
+                    console.log(`[Open Sea Arrival] Approached room '${rKey}' at sea (dist: ${distToRoom.toFixed(1)}m <= ${rInfo.seaRadius}m). Loading room.`);
+                    gs.isOpenSea = false;
+                    const localX = globalX - rInfo.x;
+                    const localZ = globalZ - rInfo.z;
+                    const localY = isSwimming ? -0.15 : (isBoating ? 0.2 : 0.0);
+                    loadRoom(rKey, 'open_sea', false, [localX, localY, localZ]);
+                    break;
+                }
+            }
         }
     }
 

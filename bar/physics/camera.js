@@ -433,7 +433,8 @@ class CameraController {
             renderCamPos[2] = this.camPos[2];
 
             if (window.CollisionWorld) {
-                const hitFraction = window.CollisionWorld.raycastSegment(camTarget, this.camPos);
+                // Ignore walkable upward-facing floor polygons (ny >= 0.7) for camera line-of-sight occlusion
+                const hitFraction = window.CollisionWorld.raycastSegment(camTarget, this.camPos, 0.7);
                 if (hitFraction !== null) {
                     // Maintain a minimum standoff distance of at least 32% (~1.6m) so camera never collapses into player
                     const targetFraction = Math.max(0.32, hitFraction - 0.06);
