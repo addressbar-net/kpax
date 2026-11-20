@@ -73,13 +73,17 @@ function buildStarterParcel() {
     const MAT_MORTAR = 6;
 
     // =========================================================================
-    // 1. $8 \times 8$ GRID OF STACKABLE FOUNDATION BLOCKS
+    // 1. $8 \times 8$ GRID OF STACKABLE FOUNDATION BLOCKS WITH MORTAR JOINTS
     // =========================================================================
     // Grid: 8 columns (-4 to 3), 8 rows (-4 to 3)
     // Each block: 2.0m x 2.0m wide, 1.0m deep (Y from -1.0 to 0.0)
     // Margins between blocks: 0.04m mortar chamfer so every block is visibly modular!
     const blockSize = 2.0;
     const gap = 0.03; // Visible block bevel groove
+
+    // Solid Mortar Bedding & Joint Matrix (-1.0 to 0.0) filling all seams between blocks
+    // Ensures watertight walkable ground across the entire parcel so Link never falls into cracks
+    builder.addBox(-8.0, -1.0, -8.0, 8.0, 0.0, 8.0, MAT_MORTAR);
 
     for (let gx = -4; gx < 4; gx++) {
         for (let gz = -4; gz < 4; gz++) {
@@ -110,6 +114,9 @@ function buildStarterParcel() {
     // =========================================================================
     // Demonstrates vertical block stacking!
     // A 3x3 stack of mahogany timber blocks rising from Y=0.0 to Y=1.0m
+    // Mortar bedding between timber blocks prevents cracks on elevated terrace
+    builder.addBox(-8.0, 0.0, -8.0, -2.0, 0.995, -2.0, MAT_MORTAR);
+
     for (let tx = -4; tx < -1; tx++) {
         for (let tz = -4; tz < -1; tz++) {
             const x1 = tx * blockSize + gap;
@@ -121,7 +128,8 @@ function buildStarterParcel() {
         }
     }
 
-    // Stone Access Step at [-2.0, 0.0 to 0.5, -2.0 to 0.0]
+    // Stone Access Step at [-2.0, 0.0 to 0.5, -2.0 to 0.0] with mortar joint
+    builder.addBox(-2.0, 0.0, -2.0, 0.0, 0.495, 0.0, MAT_MORTAR);
     builder.addBox(-2.0 + gap, 0.0, -2.0 + gap, 0.0 - gap, 0.5, -0.0 - gap, MAT_STONE);
 
     // =========================================================================

@@ -338,47 +338,47 @@ class CharacterAnimator {
         // 2. SWIMMING STATE (Prone kicking in water)
         // ==========================================
         if (state === 'SWIMMING') {
-            this.animTimer += dt * 7.5;
+            this.animTimer += dt * (isMoving ? 6.0 : 2.5);
             const swimPhase = this.animTimer;
 
-            // Body horizontal prone pitch
-            this.makeJointTransform(this._matTorso, this.joints.torso[0], this.joints.torso[1], this.joints.torso[2], 1.35, 0, 0, 0, -0.3, 0);
+            // Body horizontal prone pitch with gentle water bob
+            const swimBob = Math.sin(swimPhase * 0.7) * 0.025;
+            this.makeJointTransform(this._matTorso, this.joints.torso[0], this.joints.torso[1], this.joints.torso[2], 1.35, 0, 0, 0, -0.35 + swimBob, 0);
             this.applyLimbMatrix(model, 'torso', this._matTorso);
             this.applyLimbMatrix(model, 'equipment', this._matTorso);
 
-            // Head raised above water surface looking forward
-            this.makeJointTransform(this._matHead, this.joints.neck[0], this.joints.neck[1], this.joints.neck[2], 0.45);
+            // Head attached to torso neck: pitched upward relative to horizontal body to look forward
+            this.makeChildTransform(this._matHead, this._matTorso, this.joints.neck[0], this.joints.neck[1], this.joints.neck[2], -0.90, 0, 0);
             this.applyLimbMatrix(model, 'head', this._matHead);
-            this.applyLimbMatrix(model, 'cap', this._matHead);
+            this.makeChildTransform(this._matCap, this._matHead, this.joints.cap[0], this.joints.cap[1], this.joints.cap[2], -0.20, 0, 0);
+            this.applyLimbMatrix(model, 'cap', this._matCap);
 
-            // Alternating flutter kicks (knees bend backward during up-kick)
-            const kickL = Math.sin(swimPhase) * 0.45;
+            // Alternating flutter kicks with knees attached cleanly to torso hips
+            const kickL = Math.sin(swimPhase) * 0.35;
             const kickR = -kickL;
-            const kneeL = Math.max(0, -kickL) * 1.1 + 0.15;
-            const kneeR = Math.max(0, -kickR) * 1.1 + 0.15;
+            const kneeL = Math.max(0, -kickL) * 0.8 + 0.10;
+            const kneeR = Math.max(0, -kickR) * 0.8 + 0.10;
 
-            this.makeJointTransform(this._matThighL, this.joints.hipL[0], this.joints.hipL[1], this.joints.hipL[2], 1.35 + kickL, 0, 0.1);
+            this.makeChildTransform(this._matThighL, this._matTorso, this.joints.hipL[0], this.joints.hipL[1], this.joints.hipL[2], kickL, 0, 0.06);
             this.applyLimbMatrix(model, 'left_thigh', this._matThighL);
-            // Knee bends backward (-kneeL)
             this.makeChildTransform(this._matShinL, this._matThighL, this.joints.kneeL[0], this.joints.kneeL[1], this.joints.kneeL[2], -kneeL);
             this.applyLimbMatrix(model, 'left_shin', this._matShinL);
 
-            this.makeJointTransform(this._matThighR, this.joints.hipR[0], this.joints.hipR[1], this.joints.hipR[2], 1.35 + kickR, 0, -0.1);
+            this.makeChildTransform(this._matThighR, this._matTorso, this.joints.hipR[0], this.joints.hipR[1], this.joints.hipR[2], kickR, 0, -0.06);
             this.applyLimbMatrix(model, 'right_thigh', this._matThighR);
-            // Knee bends backward (-kneeR)
             this.makeChildTransform(this._matShinR, this._matThighR, this.joints.kneeR[0], this.joints.kneeR[1], this.joints.kneeR[2], -kneeR);
             this.applyLimbMatrix(model, 'right_shin', this._matShinR);
 
-            // Breaststroke arm pull (elbows bend forward)
-            const armStroke = Math.sin(swimPhase) * 0.6;
-            const elbowStroke = 0.8 + Math.cos(swimPhase) * 0.5;
+            // Breaststroke arm pull (shoulders attached to torso)
+            const armStroke = Math.sin(swimPhase) * 0.45;
+            const elbowStroke = 0.6 + Math.cos(swimPhase) * 0.4;
 
-            this.makeJointTransform(this._matUpperArmL, this.joints.shoulderL[0], this.joints.shoulderL[1], this.joints.shoulderL[2], 1.2 + armStroke, 0, 0.4);
+            this.makeChildTransform(this._matUpperArmL, this._matTorso, this.joints.shoulderL[0], this.joints.shoulderL[1], this.joints.shoulderL[2], armStroke, 0, 0.35);
             this.applyLimbMatrix(model, 'left_upper_arm', this._matUpperArmL);
             this.makeChildTransform(this._matForearmL, this._matUpperArmL, this.joints.elbowL[0], this.joints.elbowL[1], this.joints.elbowL[2], elbowStroke);
             this.applyLimbMatrix(model, 'left_forearm', this._matForearmL);
 
-            this.makeJointTransform(this._matUpperArmR, this.joints.shoulderR[0], this.joints.shoulderR[1], this.joints.shoulderR[2], 1.2 - armStroke, 0, -0.4);
+            this.makeChildTransform(this._matUpperArmR, this._matTorso, this.joints.shoulderR[0], this.joints.shoulderR[1], this.joints.shoulderR[2], -armStroke, 0, -0.35);
             this.applyLimbMatrix(model, 'right_upper_arm', this._matUpperArmR);
             this.makeChildTransform(this._matForearmR, this._matUpperArmR, this.joints.elbowR[0], this.joints.elbowR[1], this.joints.elbowR[2], elbowStroke);
             this.applyLimbMatrix(model, 'right_forearm', this._matForearmR);
@@ -820,34 +820,38 @@ class CharacterAnimator {
         }
 
         if (state === 'SWIMMING') {
-            rp._animTimer += dt * (isMoving ? 3.5 : 1.2);
+            rp._animTimer += dt * (isMoving ? 6.0 : 2.5);
             const swimPhase = rp._animTimer;
             const swimSin = Math.sin(swimPhase);
-            this.makeJointTransform(this._matTorso, this.joints.torso[0], this.joints.torso[1], this.joints.torso[2], -1.30, 0, 0, 0, -0.55 + Math.sin(swimPhase * 0.7) * 0.03, 0);
+            const swimBob = Math.sin(swimPhase * 0.7) * 0.025;
+            this.makeJointTransform(this._matTorso, this.joints.torso[0], this.joints.torso[1], this.joints.torso[2], 1.35, 0, 0, 0, -0.35 + swimBob, 0);
             this.applyLimbMatrix(model, 'torso', this._matTorso);
             this.applyLimbMatrix(model, 'equipment', this._matTorso);
-            this.makeChildTransform(this._matHead, this._matTorso, this.joints.neck[0], this.joints.neck[1], this.joints.neck[2], 0.85);
+            this.makeChildTransform(this._matHead, this._matTorso, this.joints.neck[0], this.joints.neck[1], this.joints.neck[2], -0.90, 0, 0);
             this.applyLimbMatrix(model, 'head', this._matHead);
-            this.makeChildTransform(this._matCap, this._matHead, this.joints.cap[0], this.joints.cap[1], this.joints.cap[2], -0.2);
+            this.makeChildTransform(this._matCap, this._matHead, this.joints.cap[0], this.joints.cap[1], this.joints.cap[2], -0.20, 0, 0);
             this.applyLimbMatrix(model, 'cap', this._matCap);
             const kickL = swimSin * 0.35;
             const kickR = -swimSin * 0.35;
-            this.makeChildTransform(this._matThighL, this._matTorso, this.joints.hipL[0], this.joints.hipL[1], this.joints.hipL[2], kickL);
+            const kneeL = Math.max(0, -kickL) * 0.8 + 0.10;
+            const kneeR = Math.max(0, -kickR) * 0.8 + 0.10;
+            this.makeChildTransform(this._matThighL, this._matTorso, this.joints.hipL[0], this.joints.hipL[1], this.joints.hipL[2], kickL, 0, 0.06);
             this.applyLimbMatrix(model, 'left_thigh', this._matThighL);
-            this.makeChildTransform(this._matShinL, this._matThighL, this.joints.kneeL[0], this.joints.kneeL[1], this.joints.kneeL[2], -0.2);
+            this.makeChildTransform(this._matShinL, this._matThighL, this.joints.kneeL[0], this.joints.kneeL[1], this.joints.kneeL[2], -kneeL);
             this.applyLimbMatrix(model, 'left_shin', this._matShinL);
-            this.makeChildTransform(this._matThighR, this._matTorso, this.joints.hipR[0], this.joints.hipR[1], this.joints.hipR[2], kickR);
+            this.makeChildTransform(this._matThighR, this._matTorso, this.joints.hipR[0], this.joints.hipR[1], this.joints.hipR[2], kickR, 0, -0.06);
             this.applyLimbMatrix(model, 'right_thigh', this._matThighR);
-            this.makeChildTransform(this._matShinR, this._matThighR, this.joints.kneeR[0], this.joints.kneeR[1], this.joints.kneeR[2], -0.2);
+            this.makeChildTransform(this._matShinR, this._matThighR, this.joints.kneeR[0], this.joints.kneeR[1], this.joints.kneeR[2], -kneeR);
             this.applyLimbMatrix(model, 'right_shin', this._matShinR);
-            const armStroke = Math.cos(swimPhase) * 0.45;
-            this.makeChildTransform(this._matUpperArmL, this._matTorso, this.joints.shoulderL[0], this.joints.shoulderL[1], this.joints.shoulderL[2], armStroke, 0, 0.4);
+            const armStroke = Math.sin(swimPhase) * 0.45;
+            const elbowStroke = 0.6 + Math.cos(swimPhase) * 0.4;
+            this.makeChildTransform(this._matUpperArmL, this._matTorso, this.joints.shoulderL[0], this.joints.shoulderL[1], this.joints.shoulderL[2], armStroke, 0, 0.35);
             this.applyLimbMatrix(model, 'left_upper_arm', this._matUpperArmL);
-            this.makeChildTransform(this._matForearmL, this._matUpperArmL, this.joints.elbowL[0], this.joints.elbowL[1], this.joints.elbowL[2], 0.5);
+            this.makeChildTransform(this._matForearmL, this._matUpperArmL, this.joints.elbowL[0], this.joints.elbowL[1], this.joints.elbowL[2], elbowStroke);
             this.applyLimbMatrix(model, 'left_forearm', this._matForearmL);
-            this.makeChildTransform(this._matUpperArmR, this._matTorso, this.joints.shoulderR[0], this.joints.shoulderR[1], this.joints.shoulderR[2], armStroke, 0, -0.4);
+            this.makeChildTransform(this._matUpperArmR, this._matTorso, this.joints.shoulderR[0], this.joints.shoulderR[1], this.joints.shoulderR[2], -armStroke, 0, -0.35);
             this.applyLimbMatrix(model, 'right_upper_arm', this._matUpperArmR);
-            this.makeChildTransform(this._matForearmR, this._matUpperArmR, this.joints.elbowR[0], this.joints.elbowR[1], this.joints.elbowR[2], 0.5);
+            this.makeChildTransform(this._matForearmR, this._matUpperArmR, this.joints.elbowR[0], this.joints.elbowR[1], this.joints.elbowR[2], elbowStroke);
             this.applyLimbMatrix(model, 'right_forearm', this._matForearmR);
             return;
         }
