@@ -682,18 +682,17 @@ async function spawnEntrancePipes(roomModel) {
         placedPositions.add(key);
 
         const pipeObj = new GameObject(pipeModel, [1.0, 1.0, 1.0], false, false);
-        let groundY = pos[1];
+        let groundY = 0.0;
         if (window.CollisionWorld && typeof window.CollisionWorld.getGroundHeight === 'function') {
-            const h = window.CollisionWorld.getGroundHeight(pos[0], pos[2], pos[1], 1.0, 5.0);
-            if (h !== null && h !== undefined && !isNaN(h) && Math.abs(h - pos[1]) < 8.0) {
+            const h = window.CollisionWorld.getGroundHeight(pos[0], pos[2], 0.0, 1.0, 5.0);
+            if (h !== null && h !== undefined && !isNaN(h) && Math.abs(h) < 8.0) {
                 groundY = h;
             }
         }
         pipeObj.position = [pos[0], groundY, pos[2]];
 
         const baseRot = (ent.rotationY !== undefined) ? ent.rotationY : 0.0;
-        // Align horizontal pipe opening with player's forward direction into the room
-        pipeObj.rotationY = Math.atan2(Math.sin(baseRot + Math.PI), Math.cos(baseRot + Math.PI));
+        pipeObj.rotationY = baseRot;
 
         pipeObj.name = `PIPE_${ent.room || ent.name || 'ENTRANCE'}`.toUpperCase();
         pipeObj.isInteractable = false;

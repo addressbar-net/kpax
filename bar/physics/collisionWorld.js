@@ -37,11 +37,8 @@ class CollisionWorldAdapter {
      * @returns {number|null} Y position of ground, or null if no terrain hit.
      */
     getGroundHeight(x, z, currentY = 0, maxStepUp = 0.35, maxStepDown = 5.0) {
-        if (!this.worldEntity || typeof this.worldEntity.getGroundHeight !== 'function') {
-            return null;
-        }
-        const height = this.worldEntity.getGroundHeight(x, z, currentY, maxStepUp, maxStepDown);
-        return height;
+        const triData = this.getGroundTriangle(x, z, currentY, maxStepUp, maxStepDown);
+        return triData ? triData.heightY : null;
     }
 
     /**
@@ -95,16 +92,28 @@ class CollisionWorldAdapter {
      * @returns {object|null} Object containing { heightY, normal, triIndex, material } or default object.
      */
     getGroundTriangle(x, z, currentY = 0, maxStepUp = 0.35, maxStepDown = 500.0) {
-        if (!this.worldEntity || typeof this.worldEntity.getGroundTriangle !== 'function') {
-            return null;
+        let bestTri = null;
+        if (this.worldEntity && typeof this.worldEntity.getGroundTriangle === 'function') {
+            bestTri = this.worldEntity.getGroundTriangle(x, z, currentY, maxStepUp, maxStepDown);
         }
 
-        const triData = this.worldEntity.getGroundTriangle(x, z, currentY, maxStepUp, maxStepDown);
-        if (!triData) return null;
+        // Also query active renderer entities (such as transformed entrance pipes with walkable rims/platforms)
+        if (typeof window !== 'undefined' && window.renderer && Array.isArray(window.renderer.entities)) {
+            for (const ent of window.renderer.entities) {
+                if (!ent || !ent.visible || typeof ent.getGroundTriangle !== 'function') continue;
+                if (ent === window.characterEntity) continue;
+                const entTri = ent.getGroundTriangle(x, z, currentY, maxStepUp, maxStepDown);
+                if (entTri && (bestTri === null || entTri.heightY > bestTri.heightY)) {
+                    bestTri = entTri;
+                }
+            }
+        }
+
+        if (!bestTri) return null;
 
         // Determine material type from index map or entity metadata, defaulting to 'STONE'
-        triData.material = (this.materialMap.size > 0 && this.materialMap.get(triData.triIndex)) || triData.material || 'STONE';
-        return triData;
+        bestTri.material = (this.materialMap.size > 0 && this.materialMap.get(bestTri.triIndex)) || bestTri.material || 'STONE';
+        return bestTri;
     }
 
     /**
