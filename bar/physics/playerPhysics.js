@@ -443,17 +443,60 @@ class PlayerPhysics {
                         characterEntity.position[2] += worldMoveZ * this.swimSpeed * dt;
                         characterEntity.rotationY = Math.atan2(-worldMoveX, -worldMoveZ);
                     }
-                    if (rawSelectPressed) {
-                        characterEntity.position[1] += this.buoyancyForce * dt;
-                    } else {
-                        characterEntity.position[1] += 2.0 * dt;
-                    }
+
                     const waterLevel = this.getWaterSurfaceElevation(characterEntity.position[0], characterEntity.position[2]);
                     if (waterLevel !== null && characterEntity.position[1] > waterLevel - 0.15) {
                         characterEntity.position[1] = waterLevel - 0.15;
                     }
 
-                    // Only climb out of water onto land if not in drop cooldown and stepping onto a walkable shore or dock
+                    // Probe for climbable shore, dock, or land ledge directly in front of Link
+                    this.pendingLedgeAction = null;
+                    if (window.CollisionWorld && (!this.waterDropCooldown || this.waterDropCooldown <= 0)) {
+                        const fwdX = -Math.sin(characterEntity.rotationY);
+                        const fwdZ = -Math.cos(characterEntity.rotationY);
+                        for (const dist of [0.70, 0.95, 0.50]) {
+                            const px = characterEntity.position[0] + fwdX * dist;
+                            const pz = characterEntity.position[2] + fwdZ * dist;
+                            const tri = window.CollisionWorld.getGroundTriangle(px, pz, (waterLevel !== null ? waterLevel : 0.0) + 1.8, 0.0, 2.2);
+                            if (tri && tri.normal[1] >= this.maxSlopeCos && tri.heightY >= (waterLevel !== null ? waterLevel - 0.05 : -0.05)) {
+                                const heightDelta = tri.heightY - characterEntity.position[1];
+                                if (heightDelta > 0.15 && heightDelta <= 1.8) {
+                                    this.pendingLedgeAction = {
+                                        targetPos: [px, tri.heightY, pz],
+                                        heightDelta: heightDelta,
+                                        type: 'MANTLE'
+                                    };
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Press K to climb onto land out of water!
+                    if (rawSelectPressed && this.pendingLedgeAction) {
+                        this.currentState = window.State.CLIMBING;
+                        this.isLockedInTransition = true;
+                        this.isUnderwater = false;
+                        this.actionTimer = 0.0;
+                        const h = this.pendingLedgeAction.heightDelta || 0.45;
+                        this.actionDuration = Math.min(0.60, Math.max(0.35, h * 0.35));
+                        this.startPos = [...characterEntity.position];
+                        this.targetPos = [...this.pendingLedgeAction.targetPos];
+                        if (typeof window.EventBus !== 'undefined') window.EventBus.emit('sfx:play', 'assign');
+                        this.pendingLedgeAction = null;
+                        return;
+                    }
+
+                    if (rawSelectPressed) {
+                        characterEntity.position[1] += this.buoyancyForce * dt;
+                    } else {
+                        characterEntity.position[1] += 2.0 * dt;
+                    }
+                    if (waterLevel !== null && characterEntity.position[1] > waterLevel - 0.15) {
+                        characterEntity.position[1] = waterLevel - 0.15;
+                    }
+
+                    // Direct gentle slope shore exit
                     if (window.CollisionWorld && (!this.waterDropCooldown || this.waterDropCooldown <= 0)) {
                         const solidGroundY = window.CollisionWorld.getGroundHeight(characterEntity.position[0], characterEntity.position[2], characterEntity.position[1], 0.60, 0.8);
                         if (solidGroundY !== null && solidGroundY >= (waterLevel !== null ? waterLevel - 0.05 : -0.05)) {

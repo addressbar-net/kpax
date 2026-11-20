@@ -388,6 +388,53 @@ class CharacterAnimator {
         }
 
         // ==========================================
+        // 2B. CLIMBING / MANTLE STATE (Ledge & Dock Climb)
+        // ==========================================
+        if (state === 'CLIMBING') {
+            const climbProgress = (phys && phys.actionDuration > 0) ? Math.min(1.0, phys.actionTimer / phys.actionDuration) : 0.5;
+
+            // Torso pitches forward during pull-up, then straightens
+            const torsoPitch = -0.35 * Math.sin(climbProgress * Math.PI);
+            this.makeJointTransform(this._matTorso, this.joints.torso[0], this.joints.torso[1], this.joints.torso[2], torsoPitch, 0, 0);
+            this.applyLimbMatrix(model, 'torso', this._matTorso);
+            this.applyLimbMatrix(model, 'equipment', this._matTorso);
+
+            // Head looks forward and up toward the destination
+            this.makeChildTransform(this._matHead, this._matTorso, this.joints.neck[0], this.joints.neck[1], this.joints.neck[2], 0.25 - torsoPitch, 0, 0);
+            this.applyLimbMatrix(model, 'head', this._matHead);
+            this.makeChildTransform(this._matCap, this._matHead, this.joints.cap[0], this.joints.cap[1], this.joints.cap[2], -0.15, 0, 0);
+            this.applyLimbMatrix(model, 'cap', this._matCap);
+
+            // Arms push down against the ledge top surface
+            const armPush = 0.85 - climbProgress * 0.70;
+            const elbowPush = 1.10 - climbProgress * 0.60;
+            this.makeChildTransform(this._matUpperArmL, this._matTorso, this.joints.shoulderL[0], this.joints.shoulderL[1], this.joints.shoulderL[2], armPush, 0, 0.35);
+            this.applyLimbMatrix(model, 'left_upper_arm', this._matUpperArmL);
+            this.makeChildTransform(this._matForearmL, this._matUpperArmL, this.joints.elbowL[0], this.joints.elbowL[1], this.joints.elbowL[2], elbowPush);
+            this.applyLimbMatrix(model, 'left_forearm', this._matForearmL);
+
+            this.makeChildTransform(this._matUpperArmR, this._matTorso, this.joints.shoulderR[0], this.joints.shoulderR[1], this.joints.shoulderR[2], armPush, 0, -0.35);
+            this.applyLimbMatrix(model, 'right_upper_arm', this._matUpperArmR);
+            this.makeChildTransform(this._matForearmR, this._matUpperArmR, this.joints.elbowR[0], this.joints.elbowR[1], this.joints.elbowR[2], elbowPush);
+            this.applyLimbMatrix(model, 'right_forearm', this._matForearmR);
+
+            // Lead leg steps up onto ledge, trail leg extends
+            const stepUpThigh = Math.sin(climbProgress * Math.PI) * 1.1;
+            const stepUpKnee = -stepUpThigh * 1.2;
+            this.makeChildTransform(this._matThighR, this._matTorso, this.joints.hipR[0], this.joints.hipR[1], this.joints.hipR[2], stepUpThigh, 0, -0.06);
+            this.applyLimbMatrix(model, 'right_thigh', this._matThighR);
+            this.makeChildTransform(this._matShinR, this._matThighR, this.joints.kneeR[0], this.joints.kneeR[1], this.joints.kneeR[2], stepUpKnee);
+            this.applyLimbMatrix(model, 'right_shin', this._matShinR);
+
+            this.makeChildTransform(this._matThighL, this._matTorso, this.joints.hipL[0], this.joints.hipL[1], this.joints.hipL[2], -0.25, 0, 0.06);
+            this.applyLimbMatrix(model, 'left_thigh', this._matThighL);
+            this.makeChildTransform(this._matShinL, this._matThighL, this.joints.kneeL[0], this.joints.kneeL[1], this.joints.kneeL[2], -0.4);
+            this.applyLimbMatrix(model, 'left_shin', this._matShinL);
+
+            return;
+        }
+
+        // ==========================================
         // 3. FLOATING STATE (EGO WINGS ACTIVE)
         // ==========================================
         if (state === 'FLOATING') {
@@ -856,6 +903,53 @@ class CharacterAnimator {
             this.applyLimbMatrix(model, 'right_upper_arm', this._matUpperArmR);
             this.makeChildTransform(this._matForearmR, this._matUpperArmR, this.joints.elbowR[0], this.joints.elbowR[1], this.joints.elbowR[2], elbowR);
             this.applyLimbMatrix(model, 'right_forearm', this._matForearmR);
+            return;
+        }
+
+        // ==========================================
+        // 2B. CLIMBING / MANTLE STATE (Ledge & Dock Climb)
+        // ==========================================
+        if (state === 'CLIMBING') {
+            const climbProgress = (phys && phys.actionDuration > 0) ? Math.min(1.0, phys.actionTimer / phys.actionDuration) : 0.5;
+
+            // Torso pitches forward during pull-up, then straightens
+            const torsoPitch = -0.35 * Math.sin(climbProgress * Math.PI);
+            this.makeJointTransform(this._matTorso, this.joints.torso[0], this.joints.torso[1], this.joints.torso[2], torsoPitch, 0, 0);
+            this.applyLimbMatrix(model, 'torso', this._matTorso);
+            this.applyLimbMatrix(model, 'equipment', this._matTorso);
+
+            // Head looks forward and up toward the destination
+            this.makeChildTransform(this._matHead, this._matTorso, this.joints.neck[0], this.joints.neck[1], this.joints.neck[2], 0.25 - torsoPitch, 0, 0);
+            this.applyLimbMatrix(model, 'head', this._matHead);
+            this.makeChildTransform(this._matCap, this._matHead, this.joints.cap[0], this.joints.cap[1], this.joints.cap[2], -0.15, 0, 0);
+            this.applyLimbMatrix(model, 'cap', this._matCap);
+
+            // Arms push down against the ledge top surface
+            const armPush = 0.85 - climbProgress * 0.70;
+            const elbowPush = 1.10 - climbProgress * 0.60;
+            this.makeChildTransform(this._matUpperArmL, this._matTorso, this.joints.shoulderL[0], this.joints.shoulderL[1], this.joints.shoulderL[2], armPush, 0, 0.35);
+            this.applyLimbMatrix(model, 'left_upper_arm', this._matUpperArmL);
+            this.makeChildTransform(this._matForearmL, this._matUpperArmL, this.joints.elbowL[0], this.joints.elbowL[1], this.joints.elbowL[2], elbowPush);
+            this.applyLimbMatrix(model, 'left_forearm', this._matForearmL);
+
+            this.makeChildTransform(this._matUpperArmR, this._matTorso, this.joints.shoulderR[0], this.joints.shoulderR[1], this.joints.shoulderR[2], armPush, 0, -0.35);
+            this.applyLimbMatrix(model, 'right_upper_arm', this._matUpperArmR);
+            this.makeChildTransform(this._matForearmR, this._matUpperArmR, this.joints.elbowR[0], this.joints.elbowR[1], this.joints.elbowR[2], elbowPush);
+            this.applyLimbMatrix(model, 'right_forearm', this._matForearmR);
+
+            // Lead leg steps up onto ledge, trail leg extends
+            const stepUpThigh = Math.sin(climbProgress * Math.PI) * 1.1;
+            const stepUpKnee = -stepUpThigh * 1.2;
+            this.makeChildTransform(this._matThighR, this._matTorso, this.joints.hipR[0], this.joints.hipR[1], this.joints.hipR[2], stepUpThigh, 0, -0.06);
+            this.applyLimbMatrix(model, 'right_thigh', this._matThighR);
+            this.makeChildTransform(this._matShinR, this._matThighR, this.joints.kneeR[0], this.joints.kneeR[1], this.joints.kneeR[2], stepUpKnee);
+            this.applyLimbMatrix(model, 'right_shin', this._matShinR);
+
+            this.makeChildTransform(this._matThighL, this._matTorso, this.joints.hipL[0], this.joints.hipL[1], this.joints.hipL[2], -0.25, 0, 0.06);
+            this.applyLimbMatrix(model, 'left_thigh', this._matThighL);
+            this.makeChildTransform(this._matShinL, this._matThighL, this.joints.kneeL[0], this.joints.kneeL[1], this.joints.kneeL[2], -0.4);
+            this.applyLimbMatrix(model, 'left_shin', this._matShinL);
+
             return;
         }
 

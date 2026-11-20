@@ -1213,7 +1213,8 @@ function updateHUDActionText() {
     } else if (gs && (gs.playerState === 'FLOATING' || gs.playerState === 'FALLING' || gs.playerState === 'JUMPING')) {
         _cachedHudActionText.textContent = "DESCENT";
     } else if (gs && gs.pendingLedgeAction) {
-        _cachedHudActionText.textContent = gs.pendingLedgeAction.type === 'MANTLE' ? "CLIMB LEDGE" : "HIGH CLIMB";
+        const isSwimming = gs.playerState === 'SWIMMING' || (window.playerPhysicsInstance && window.playerPhysicsInstance.currentState === 'SWIMMING');
+        _cachedHudActionText.textContent = isSwimming ? "PRESS [K] -> CLIMB ONTO LAND" : (gs.pendingLedgeAction.type === 'MANTLE' ? "CLIMB LEDGE" : "HIGH CLIMB");
     } else if (nearbyExit) {
         if (nearbyExit.isBarExternal && nearbyExit.externalUrl) {
             const cleanUrl = nearbyExit.externalUrl.replace(/^https?:\/\//i, '').replace(/^bar:\/\//i, '').replace(/\/+$/, '');
